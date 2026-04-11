@@ -183,20 +183,42 @@ body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_module {
     padding: 15px 40px;
 }
 
-.wpcc-scope #btn_complete_chapter {
-    background-color: #0011d6;
-    padding: 10px 15px;
-    color: #fff;
-    letter-spacing: 1px;
-    font-weight: 600;
-    border-radius: 27px;
-    font-size: 18px;
-    cursor: pointer;
-    border: none;
+/*
+ * DIVI ships a very specific .et_pb_button rule set that wins against a plain
+ * #btn_complete_chapter selector and makes the button look like an unstyled
+ * link. We have to use !important here to force the blue pill shape through,
+ * even on themes that aggressively re-style every <button>.
+ */
+.wpcc-scope #btn_complete_chapter,
+.wpcc-scope button#btn_complete_chapter {
+    display: inline-block !important;
+    background-color: #0011d6 !important;
+    background-image: none !important;
+    padding: 14px 34px !important;
+    color: #fff !important;
+    letter-spacing: 1px !important;
+    font-weight: 600 !important;
+    border-radius: 27px !important;
+    font-size: 18px !important;
+    line-height: 1.2 !important;
+    cursor: pointer !important;
+    border: none !important;
+    box-shadow: none !important;
+    text-decoration: none !important;
+    text-transform: none !important;
+    min-width: 260px;
 }
 
-.wpcc-scope #btn_complete_chapter:hover {
-    background-color: #000cb0;
+.wpcc-scope #btn_complete_chapter:hover,
+.wpcc-scope button#btn_complete_chapter:hover {
+    background-color: #000cb0 !important;
+    color: #fff !important;
+}
+
+.wpcc-scope #btn_complete_chapter::after,
+.wpcc-scope button#btn_complete_chapter::after {
+    display: none !important;
+    content: none !important;
 }
 
 .wpcc-scope .wpc-complete-success { color: green; }
