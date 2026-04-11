@@ -404,3 +404,50 @@ function wpcc_body_class( $classes ) {
     return $classes;
 }
 add_filter( 'body_class', 'wpcc_body_class' );
+
+/* =====================================================================
+ * Yellow "already in your history" banner on completed lessons
+ * ================================================================== */
+
+/**
+ * Prepends a yellow banner to the top of the post content on lessons the
+ * current user has already completed. Only fires on the main query, on a
+ * singular view, and only when the post contains a plugin shortcode — that
+ * way it can never leak into the calendar page, the blog index, or into
+ * random DIVI modules that re-run the_content filter (like post excerpts
+ * in related-post blocks).
+ *
+ * Style lives in custom/css/style.css under .wpcc-completed-banner.
+ */
+function wpcc_prepend_completed_banner( $content ) {
+    if ( is_admin() ) {
+        return $content;
+    }
+    if ( ! in_the_loop() || ! is_main_query() || ! is_singular() ) {
+        return $content;
+    }
+
+    global $post;
+    if ( ! is_a( $post, 'WP_Post' ) ) {
+        return $content;
+    }
+    if ( ! wpcc_post_has_plugin_shortcode( $post ) ) {
+        return $content;
+    }
+    if ( ! wpcc_user_completed_lesson( $post->ID ) ) {
+        return $content;
+    }
+
+    $message = apply_filters(
+        'wpcc_completed_banner_text',
+        __( 'Ta lekcja jest już w Twojej historii nauki.', 'wp-custom-calendar' ),
+        $post->ID
+    );
+
+    $banner  = '<div class="wpcc-scope">';
+    $banner .= '<div class="wpcc-completed-banner">' . esc_html( $message ) . '</div>';
+    $banner .= '</div>';
+
+    return $banner . $content;
+}
+add_filter( 'the_content', 'wpcc_prepend_completed_banner', 9 );

@@ -1,12 +1,37 @@
 /*
 * WP Custom Calendar styles.
 *
-* IMPORTANT: every rule in this file is scoped to `.wpcc-scope` so it can only
-* affect markup the plugin itself renders. The previous version had global
-* `html, body` rules and a bare `#calendar` selector, which collided with DIVI
-* and forced a manual "Clear Static CSS File Generation" after every change.
-* Do not add un-scoped selectors here.
+* IMPORTANT: almost every rule in this file is scoped to `.wpcc-scope` so it
+* can only affect markup the plugin itself renders. The previous version had
+* global `html, body` rules and a bare `#calendar` selector, which collided
+* with DIVI and forced a manual "Clear Static CSS File Generation" after every
+* change. Do not add un-scoped selectors here — except the two body-class
+* driven hide rules and the .wpcc-event-tooltip rule, which HAVE to live
+* outside .wpcc-scope because they target markup the plugin did not render
+* (the DIVI lesson template and a body-appended tooltip).
 */
+
+/* --------------------------------------------------------------------
+ * Auto-hide the DIVI "end of the lesson" row
+ *
+ * The plugin cannot touch the DIVI template, but it can set body classes
+ * (see inc/custome-calendar-frontend.php → wpcc_body_class). Add the CSS
+ * class `wpcc-end-of-lesson` to the DIVI Row/Section containing "THE END
+ * OF THE LESSON" + the grey success box, and it will automatically vanish
+ * when:
+ *   - the current user has already completed this lesson, OR
+ *   - the per-post "Hide Button" toggle is on.
+ *
+ * !important is necessary because DIVI sections carry their own inline
+ * display styles that would otherwise win.
+ * ------------------------------------------------------------------ */
+
+body.wpcc-lesson-hide-section .wpcc-end-of-lesson,
+body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_section,
+body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_row,
+body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_module {
+    display: none !important;
+}
 
 /* --------------------------------------------------------------------
  * Calendar container

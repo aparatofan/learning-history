@@ -50,19 +50,24 @@ jQuery(document).ready(function($) {
                         } else {
                             event.allDay = false;
                         }
-                        // Replace the whole event cell content with a single
-                        // clean icon. Clears FullCalendar's default decorations
-                        // (dot, title text) so there is never a second image
-                        // stacked below or beside the icon.
+                        // Replace the WHOLE event element's inner HTML with a
+                        // single clean icon. Wiping element.html() (not just
+                        // .fc-content) guarantees no FullCalendar decorations
+                        // (dot, title, time) or stale thumbnail can remain
+                        // stacked next to the category icon.
                         element.addClass('wpcc-lesson-event');
                         element.removeAttr('title');
-                        var $content = element.find('.fc-content');
-                        if (!$content.length) { $content = element; }
-                        $content.empty();
+                        var inner = '<div class="fc-content">';
                         if (event.imageID) {
-                            var $img = $('<img class="wpcc-lesson-icon" alt="" />').attr('src', event.imageID);
-                            $content.append($img);
+                            var safeSrc = String(event.imageID)
+                                .replace(/&/g, '&amp;')
+                                .replace(/"/g, '&quot;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;');
+                            inner += '<img class="wpcc-lesson-icon" alt="" src="' + safeSrc + '" />';
                         }
+                        inner += '</div>';
+                        element.html(inner);
                     },
                     eventMouseover: function(calEvent, jsEvent) {
                         // Title-only tooltip. No excerpt, no image — just the

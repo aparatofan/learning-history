@@ -23,13 +23,29 @@ function getprivate_event_callback() {
     }
 
     $wpcct_name = $wpdb->prefix . 'wpcc_tracking';
-    $results    = $wpdb->get_results(
-        $wpdb->prepare( "SELECT * FROM $wpcct_name WHERE customerID = %d", $user_id )
+
+    // Newest row first so when we dedupe below we keep the most recent record
+    // for each lesson. This matters because earlier versions of the plugin
+    // could insert multiple rows per lesson (and with the pre-fix imageID =
+    // featured image instead of the category icon), which would render as two
+    // stacked images in the calendar cell.
+    $results = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT * FROM $wpcct_name WHERE customerID = %d ORDER BY id DESC",
+            $user_id
+        )
     );
 
     $event_array = array();
+    $seen        = array();
     if ( is_array( $results ) ) {
         foreach ( $results as $row ) {
+            $post_id = isset( $row->post_id ) ? (int) $row->post_id : 0;
+            if ( $post_id && isset( $seen[ $post_id ] ) ) {
+                continue;
+            }
+            $seen[ $post_id ] = true;
+
             $event_array[] = array(
                 'id'          => isset( $row->id ) ? (int) $row->id : 0,
                 'title'       => isset( $row->title ) ? $row->title : '',
@@ -37,7 +53,7 @@ function getprivate_event_callback() {
                 'start'       => isset( $row->start ) ? $row->start : '',
                 'imageID'     => isset( $row->imageID ) ? $row->imageID : '',
                 'allDay'      => true,
-                'post_id'     => isset( $row->post_id ) ? (int) $row->post_id : 0,
+                'post_id'     => $post_id,
             );
         }
     }
