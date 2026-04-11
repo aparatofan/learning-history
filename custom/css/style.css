@@ -86,10 +86,19 @@ body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_module {
     display: none;
 }
 
+/*
+ * Lesson image inside a calendar cell. We render the post's featured image
+ * here (see wpcc_get_lesson_image), so sizing is landscape-friendly:
+ * max-width / max-height rather than a rigid square. Natural aspect ratio
+ * is preserved, rectangular covers fit inside an 88x66 box, square
+ * category-icon fallbacks still display at up to 66x66.
+ */
 .wpcc-scope #wp_custom_calendar .wpcc-lesson-icon {
     display: block;
-    width: 40px;
-    height: 40px;
+    max-width: 88px;
+    max-height: 66px;
+    width: auto;
+    height: auto;
     margin: 0 auto;
     padding: 0;
     border: 0;
@@ -97,6 +106,13 @@ body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_module {
     background: transparent;
     object-fit: contain;
     pointer-events: none;
+}
+
+@media (max-width: 560px) {
+    .wpcc-scope #wp_custom_calendar .wpcc-lesson-icon {
+        max-width: 56px;
+        max-height: 44px;
+    }
 }
 
 /* --------------------------------------------------------------------
