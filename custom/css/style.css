@@ -178,3 +178,64 @@ body > .tooltip.event-popup-meta .ev_description {
     text-align: center;
     font-size: 15px;
 }
+
+/* --------------------------------------------------------------------
+ * Grey "end of lesson" success box
+ * ------------------------------------------------------------------ */
+
+.wpcc-scope .wpcc-success-box {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    background: #f3f3f3;
+    border: 1px solid #e4e4e4;
+    padding: 22px 28px;
+    border-radius: 6px;
+    margin: 24px auto;
+    max-width: 720px;
+    color: #222;
+    box-sizing: border-box;
+}
+
+.wpcc-scope .wpcc-success-box__body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wpcc-scope .wpcc-success-box__title {
+    color: #0011d6;
+    font-weight: 700;
+    font-size: 18px;
+    margin: 0 0 12px 0;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    line-height: 1.25;
+}
+
+.wpcc-scope .wpcc-success-box__text {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #333;
+}
+
+.wpcc-scope .wpcc-success-box__text:last-child {
+    margin-bottom: 0;
+}
+
+.wpcc-scope .wpcc-success-box__icon {
+    flex: 0 0 auto;
+    color: #0011d6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@media (max-width: 560px) {
+    .wpcc-scope .wpcc-success-box {
+        flex-direction: column-reverse;
+        text-align: center;
+        gap: 16px;
+        padding: 18px;
+    }
+}
