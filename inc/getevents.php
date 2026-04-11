@@ -25,13 +25,14 @@ function getprivate_event_callback() {
     $wpcct_name = $wpdb->prefix . 'wpcc_tracking';
 
     // Newest row first so when we dedupe below we keep the most recent record
-    // for each lesson. This matters because earlier versions of the plugin
-    // could insert multiple rows per lesson (and with the pre-fix imageID =
-    // featured image instead of the category icon), which would render as two
-    // stacked images in the calendar cell.
+    // for each lesson. post_id > 0 drops legacy orphan rows from the old
+    // pre-rewrite plugin, which stored the shared category icon in imageID
+    // without populating post_id — those rows rendered as stale icons on
+    // top of the real featured image for the same lesson and could not be
+    // deduped against it (post_id 0 != real post_id).
     $results = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT * FROM $wpcct_name WHERE customerID = %d ORDER BY id DESC",
+            "SELECT * FROM $wpcct_name WHERE customerID = %d AND post_id > 0 ORDER BY id DESC",
             $user_id
         )
     );
