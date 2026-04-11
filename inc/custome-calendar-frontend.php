@@ -76,6 +76,15 @@ function wpcc_post_has_plugin_shortcode( $post ) {
  *      the shortcode isn't literally in the post_content.
  *   3. Any singular post with the "Hide Button" toggle on, for the same
  *      reason.
+ *   4. Any singular post viewed by a logged-in, non-admin user. This is the
+ *      "brand new lesson, about to complete it" case: the DIVI Theme Builder
+ *      template injects [wp_customcalendar_single] at render time, so the
+ *      shortcode is NOT in post_content and the post has no tracking row and
+ *      no hide_button flag — but the button DOES get rendered, and it needs
+ *      style.css (for the blue pill) and script.js (for the click handler)
+ *      to work. Anonymous visitors never see the button, so they don't need
+ *      the assets; gating on is_user_logged_in() keeps the asset payload off
+ *      everyone else's lesson pages.
  */
 function wpcc_should_load_assets() {
     if ( is_admin() ) {
@@ -92,6 +101,9 @@ function wpcc_should_load_assets() {
         return true;
     }
     if ( is_singular() && wpcc_is_button_hidden( $post->ID ) ) {
+        return true;
+    }
+    if ( is_singular() && is_user_logged_in() ) {
         return true;
     }
     return false;
@@ -303,11 +315,34 @@ function wpcc_get_lesson_image( $post_id ) {
  * ================================================================== */
 
 /**
+ * Force-enqueues the plugin's CSS/JS from inside a shortcode callback.
+ *
+ * This is a safety net. The preferred path is the `wp_enqueue_scripts`
+ * action running `wpcc_enqueue_assets()` before `the_content` is rendered,
+ * but when the lesson layout comes from a DIVI Theme Builder template the
+ * post object and the query context aren't always what wpcc_should_load_
+ * assets() expects. By also calling wp_enqueue_* from the shortcode, we
+ * guarantee that whenever the shortcode actually renders markup, the CSS
+ * and JS it needs are printed in the footer (and any pending styles are
+ * printed via wp_print_footer_scripts / wp_print_late_styles).
+ */
+function wpcc_force_enqueue_assets() {
+    wp_enqueue_style( 'wpcc-fullcalendar' );
+    wp_enqueue_style( 'wpcc-toastr' );
+    wp_enqueue_script( 'wpcc-moment' );
+    wp_enqueue_script( 'wpcc-fullcalendar' );
+    wp_enqueue_script( 'wpcc-toastr' );
+    wp_enqueue_style( 'wp-custom-calendar' );
+    wp_enqueue_script( 'wp-custom-calendar' );
+}
+
+/**
  * Calendar shortcode — renders the container FullCalendar mounts into.
  * Registered under both spellings because the existing DIVI content uses
  * the no-underscore form.
  */
 function wpcc_calendar_shortcode( $atts ) {
+    wpcc_force_enqueue_assets();
     return '<div class="wpcc-scope"><div id="wp_custom_calendar"></div></div>';
 }
 add_shortcode( 'wp_customcalendar', 'wpcc_calendar_shortcode' );
@@ -346,6 +381,11 @@ function wpcc_single_shortcode( $atts ) {
     if ( wpcc_user_completed_lesson( $post_id, $user_id ) ) {
         return '';
     }
+
+    // The button needs the plugin's CSS (blue pill) and JS (click handler)
+    // to be useful. Force-enqueue both now, in case the early wp_enqueue_
+    // scripts gate missed this page.
+    wpcc_force_enqueue_assets();
 
     return wpcc_render_complete_button( $post_id );
 }
@@ -512,11 +552,14 @@ function wpcc_debug_footer_comment() {
     $parts = array(
         'wpcc v=' . WPCC_VERSION,
     );
+    $parts[] = 'logged_in=' . ( is_user_logged_in() ? '1' : '0' );
+    $parts[] = 'user_id=' . (int) get_current_user_id();
     if ( is_a( $post, 'WP_Post' ) ) {
         $parts[] = 'post_id=' . (int) $post->ID;
         $parts[] = 'has_shortcode=' . ( wpcc_post_has_plugin_shortcode( $post ) ? '1' : '0' );
         $parts[] = 'completed=' . ( wpcc_user_completed_lesson( $post->ID ) ? '1' : '0' );
         $parts[] = 'hidden=' . ( wpcc_is_button_hidden( $post->ID ) ? '1' : '0' );
+        $parts[] = 'assets=' . ( wpcc_should_load_assets() ? '1' : '0' );
     }
     echo "\n<!-- " . esc_html( implode( ' ', $parts ) ) . " -->\n";
 }
