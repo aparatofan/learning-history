@@ -1,12 +1,37 @@
 /*
 * WP Custom Calendar styles.
 *
-* IMPORTANT: every rule in this file is scoped to `.wpcc-scope` so it can only
-* affect markup the plugin itself renders. The previous version had global
-* `html, body` rules and a bare `#calendar` selector, which collided with DIVI
-* and forced a manual "Clear Static CSS File Generation" after every change.
-* Do not add un-scoped selectors here.
+* IMPORTANT: almost every rule in this file is scoped to `.wpcc-scope` so it
+* can only affect markup the plugin itself renders. The previous version had
+* global `html, body` rules and a bare `#calendar` selector, which collided
+* with DIVI and forced a manual "Clear Static CSS File Generation" after every
+* change. Do not add un-scoped selectors here — except the two body-class
+* driven hide rules and the .wpcc-event-tooltip rule, which HAVE to live
+* outside .wpcc-scope because they target markup the plugin did not render
+* (the DIVI lesson template and a body-appended tooltip).
 */
+
+/* --------------------------------------------------------------------
+ * Auto-hide the DIVI "end of the lesson" row
+ *
+ * The plugin cannot touch the DIVI template, but it can set body classes
+ * (see inc/custome-calendar-frontend.php → wpcc_body_class). Add the CSS
+ * class `wpcc-end-of-lesson` to the DIVI Row/Section containing "THE END
+ * OF THE LESSON" + the grey success box, and it will automatically vanish
+ * when:
+ *   - the current user has already completed this lesson, OR
+ *   - the per-post "Hide Button" toggle is on.
+ *
+ * !important is necessary because DIVI sections carry their own inline
+ * display styles that would otherwise win.
+ * ------------------------------------------------------------------ */
+
+body.wpcc-lesson-hide-section .wpcc-end-of-lesson,
+body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_section,
+body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_row,
+body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_module {
+    display: none !important;
+}
 
 /* --------------------------------------------------------------------
  * Calendar container
@@ -18,12 +43,13 @@
 }
 
 .wpcc-scope #wp_custom_calendar {
-    max-width: 900px;
+    max-width: 100%;
+    width: 100%;
     margin: 40px auto;
 }
 
 .wpcc-scope .fc-title {
-    color: #fff;
+    color: #000;
     font-size: .85em;
     line-height: 1.3;
 }
@@ -36,52 +62,65 @@
 }
 
 .wpcc-scope #wp_custom_calendar .fc-event {
-    border: unset;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 2px auto !important;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.wpcc-scope #wp_custom_calendar .fc-event .fc-content {
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .wpcc-scope #wp_custom_calendar .fc-event .fc-title {
-    color: #000;
+    display: none;
+}
+
+.wpcc-scope #wp_custom_calendar .wpcc-lesson-icon {
+    display: block;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+    object-fit: contain;
+    pointer-events: none;
 }
 
 /* --------------------------------------------------------------------
- * Tooltip / event popup
+ * Title-only hover tooltip
+ *
+ * Created on the fly by custom/js/script.js in eventMouseover and appended
+ * to <body>, so it is NOT inside .wpcc-scope. We still keep the selector
+ * specific (.wpcc-event-tooltip) so it cannot collide with DIVI or other
+ * plugins.
  * ------------------------------------------------------------------ */
 
-.wpcc-scope .popper,
-.wpcc-scope .tooltip,
-body > .tooltip.event-popup-meta {
+.wpcc-event-tooltip {
     position: absolute;
     z-index: 9999;
-    background: #17a2b8;
-    color: white;
-    text-align: left;
-    width: 150px;
-    border-radius: 3px;
-    box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
-    padding: 10px;
-}
-
-body > .tooltip.event-popup-meta {
-    background: #6b679c;
-    color: white;
-    font-size: 13px;
-    line-height: 25px;
-    min-width: 205px;
-    width: auto;
-}
-
-body > .tooltip.event-popup-meta .ev_title {
-    display: block;
-    width: 100%;
-    text-transform: capitalize;
-    font-weight: 500;
-}
-
-body > .tooltip.event-popup-meta .ev_description {
-    display: block;
-    width: 100%;
-    text-transform: capitalize;
-    font-weight: bold;
+    background: #222;
+    color: #fff;
+    font: 13px/1.4 Arial, "Helvetica Neue", Helvetica, sans-serif;
+    padding: 6px 10px;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+    max-width: 260px;
+    white-space: normal;
+    text-align: center;
 }
 
 /* --------------------------------------------------------------------
@@ -177,4 +216,65 @@ body > .tooltip.event-popup-meta .ev_description {
     border-radius: 4px;
     text-align: center;
     font-size: 15px;
+}
+
+/* --------------------------------------------------------------------
+ * Grey "end of lesson" success box
+ * ------------------------------------------------------------------ */
+
+.wpcc-scope .wpcc-success-box {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    background: #f3f3f3;
+    border: 1px solid #e4e4e4;
+    padding: 22px 28px;
+    border-radius: 6px;
+    margin: 24px auto;
+    max-width: 720px;
+    color: #222;
+    box-sizing: border-box;
+}
+
+.wpcc-scope .wpcc-success-box__body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wpcc-scope .wpcc-success-box__title {
+    color: #0011d6;
+    font-weight: 700;
+    font-size: 18px;
+    margin: 0 0 12px 0;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    line-height: 1.25;
+}
+
+.wpcc-scope .wpcc-success-box__text {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #333;
+}
+
+.wpcc-scope .wpcc-success-box__text:last-child {
+    margin-bottom: 0;
+}
+
+.wpcc-scope .wpcc-success-box__icon {
+    flex: 0 0 auto;
+    color: #0011d6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@media (max-width: 560px) {
+    .wpcc-scope .wpcc-success-box {
+        flex-direction: column-reverse;
+        text-align: center;
+        gap: 16px;
+        padding: 18px;
+    }
 }
