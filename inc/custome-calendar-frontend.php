@@ -2,17 +2,30 @@
 /**
  * Frontend integration for WP Custom Calendar.
  *
- * Responsibilities:
- *   - Enqueue CSS/JS only on pages that actually use the calendar or show a
- *     lesson, so global selectors can never bleed into other pages (this is
- *     what fixes the DIVI CSS conflict).
- *   - Provide the [wp_customcalendar] shortcode (renders the calendar).
- *   - Provide the [wp_custom_calendar_single] shortcode (renders the
- *     end-of-lesson info box and the "Dodaj lekcję do historii" button).
- *   - Render the yellow "already completed" banner on single lesson pages
- *     the current user HAS completed.
- *   - Register the "Chapter Complete Button > Hide Button" metabox so the
- *     section can be suppressed on free lessons / non-lesson posts.
+ * Simplified to only the things the DIVI templates on thebluetree.pl actually
+ * need. The plugin is now the minimal layer between the DIVI content the site
+ * owner has already built and the wpcc_tracking database table:
+ *
+ *   - Enqueues CSS/JS only on pages that use a plugin shortcode.
+ *   - Provides [wp_customcalendar]         — the calendar on the history page.
+ *   - Provides [wp_customcalendar_single]  — the "Dodaj lekcję do historii"
+ *                                            button, or nothing when the
+ *                                            lesson is already completed or
+ *                                            the "Hide Button" toggle is on.
+ *   - Adds body classes wpcc-lesson-completed / wpcc-button-hidden so the
+ *     DIVI "end of the lesson" section in the template can be hidden with a
+ *     single CSS rule without the plugin having to touch the template.
+ *
+ * Things the plugin explicitly does NOT do anymore (they were causing the
+ * duplicate section / "not original" box / Hide-Button-is-ignored problems):
+ *
+ *   - Does not render its own grey success box. That lives in the DIVI
+ *     template as static content and should stay there — it's "the original".
+ *   - Does not filter the_content to auto-append anything. Placement is 100%
+ *     controlled by where the user drops [wp_customcalendar_single] in DIVI.
+ *   - Does not register its own "Hide Button" metabox. The site already has
+ *     one (the Yes/No toggle in the post edit screen); we just read whatever
+ *     meta key it writes to.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -24,23 +37,21 @@ if ( ! defined( 'ABSPATH' ) ) {
  * ================================================================== */
 
 /**
- * Shortcode tags the plugin owns. These EXACTLY match the names the existing
- * content on the site uses, which is why both variants are here:
- *
- *   [wp_customcalendar]          — renders the calendar (history page)
- *   [wp_custom_calendar_single]  — renders the end-of-lesson section
- *
- * `wp_custom_calendar` (with an underscore between "custom" and "calendar")
- * is registered as a back-compat alias so older content keeps working.
+ * All shortcode tags the plugin responds to. Multiple spellings are listed
+ * because the DIVI content on thebluetree.pl uses the no-underscore form
+ * (wp_customcalendar) and the previous version of this plugin used the
+ * underscore form (wp_custom_calendar). Both have to keep working so legacy
+ * pages don't suddenly render raw shortcode text.
  */
 function wpcc_shortcodes() {
-    return array( 'wp_customcalendar', 'wp_custom_calendar', 'wp_custom_calendar_single' );
+    return array(
+        'wp_customcalendar',
+        'wp_custom_calendar',
+        'wp_customcalendar_single',
+        'wp_custom_calendar_single',
+    );
 }
 
-/**
- * Returns true when the given post's content contains any of the plugin's
- * shortcodes.
- */
 function wpcc_post_has_plugin_shortcode( $post ) {
     if ( ! is_a( $post, 'WP_Post' ) ) {
         return false;
@@ -54,70 +65,23 @@ function wpcc_post_has_plugin_shortcode( $post ) {
 }
 
 /**
- * Decide whether the current request should load the plugin's CSS/JS.
- *
- * We only want the assets when:
- *   - The current post/page contains one of the plugin's shortcodes, OR
- *   - We are on a single "lesson" (see wpcc_is_lesson).
+ * Load the plugin's CSS/JS only on pages that actually use one of its
+ * shortcodes. This is what keeps the DIVI static CSS cache clean — the rules
+ * in style.css never touch pages that don't reference the plugin.
  */
 function wpcc_should_load_assets() {
     if ( is_admin() ) {
         return false;
     }
-
     global $post;
-
-    if ( wpcc_post_has_plugin_shortcode( $post ) ) {
-        return true;
-    }
-
-    if ( wpcc_is_lesson( $post ) ) {
-        return true;
-    }
-
-    return false;
-}
-
-/**
- * Decide whether a given post object should be treated as a "lesson" for the
- * purpose of rendering the completion button / yellow banner / success box.
- *
- * Default: any singular post whose post_type is NOT `page`, and that does
- * not already contain a plugin shortcode (so the calendar page itself is
- * never treated as a lesson). Override via the `wpcc_is_lesson` filter to
- * restrict to a specific custom post type or category.
- */
-function wpcc_is_lesson( $post ) {
-    if ( ! is_singular() || ! is_a( $post, 'WP_Post' ) ) {
-        return false;
-    }
-
-    $is_lesson = ( 'page' !== $post->post_type );
-
-    if ( wpcc_post_has_plugin_shortcode( $post ) ) {
-        $is_lesson = false;
-    }
-
-    return (bool) apply_filters( 'wpcc_is_lesson', $is_lesson, $post );
+    return wpcc_post_has_plugin_shortcode( $post );
 }
 
 /* =====================================================================
  * Asset registration
  * ================================================================== */
 
-/**
- * Conditionally enqueue plugin assets. Registering unconditionally but only
- * enqueueing where needed prevents the global rules in style.css from
- * leaking into every page on the site and conflicting with DIVI.
- */
 function wpcc_enqueue_assets() {
-    // Everything the plugin needs is shipped locally in /lib so the plugin
-    // is fully self-contained and does not depend on a third-party CDN.
-    //
-    // FullCalendar v3.9.0 is the version the monolithic `$().fullCalendar()`
-    // API in custom/js/script.js expects; the v4.x files also present in
-    // /lib are leftovers from an unfinished migration and are NOT loaded.
-
     wp_register_style(
         'wpcc-fullcalendar',
         WPCC_PLUGIN_URL . 'lib/css/fullcalendar.min.css',
@@ -194,9 +158,6 @@ add_action( 'wp_enqueue_scripts', 'wpcc_enqueue_assets' );
  * Lesson-state lookups
  * ================================================================== */
 
-/**
- * Returns true when the current user has already completed the given lesson.
- */
 function wpcc_user_completed_lesson( $post_id, $user_id = 0 ) {
     if ( ! $user_id ) {
         $user_id = get_current_user_id();
@@ -219,26 +180,50 @@ function wpcc_user_completed_lesson( $post_id, $user_id = 0 ) {
 }
 
 /**
- * Respects the per-post "Hide Button" toggle in the Chapter Complete Button
- * metabox. Used to suppress the whole end-of-lesson section on free lessons
- * or posts that aren't part of the lesson catalogue.
+ * Returns true when the per-post "Hide Button" toggle is set.
+ *
+ * thebluetree.pl already has a "Chapter Complete Button > Hide Button"
+ * metabox (visible in the post edit screen as a Yes/No toggle switch) that
+ * was registered by some other part of the site — not by this plugin. We
+ * don't know exactly which meta key it writes to, so we check all of the
+ * common names, and expose a filter for any weirder ones.
+ *
+ * If you know the exact meta key, the fastest fix is:
+ *
+ *     add_filter( 'wpcc_is_button_hidden', function( $hidden, $post_id ) {
+ *         return $hidden || 'yes' === get_post_meta( $post_id, 'YOUR_KEY', true );
+ *     }, 10, 2 );
  */
 function wpcc_is_button_hidden( $post_id ) {
-    $value = get_post_meta( $post_id, '_wpcc_hide_button', true );
-    $is_hidden = in_array( $value, array( 'yes', '1', 1, true, 'true', 'on' ), true );
+    $candidate_keys = array(
+        '_wpcc_hide_button',
+        'wpcc_hide_button',
+        'hide_button',
+        'hide_chapter_complete_button',
+        'chapter_complete_button_hide',
+        '_chapter_complete_button',
+        'chapter_complete_button',
+    );
+    $truthy = array( 'yes', 'Yes', 'YES', '1', 1, true, 'true', 'on' );
+
+    $is_hidden = false;
+    foreach ( $candidate_keys as $key ) {
+        $value = get_post_meta( $post_id, $key, true );
+        if ( in_array( $value, $truthy, true ) ) {
+            $is_hidden = true;
+            break;
+        }
+    }
+
     return (bool) apply_filters( 'wpcc_is_button_hidden', $is_hidden, $post_id );
 }
 
 /**
- * Returns a URL to use as the calendar icon for a given lesson. Tries in order:
- *
- *   1. Term-meta fields on the post's first category (category_icon, icon,
- *      category_image, thumbnail_id). This matches the common
- *      "category images" / ACF pattern.
- *   2. The post's featured image.
- *
- * Sites using a non-standard term meta key can hook into the `wpcc_lesson_image`
- * filter to supply their own URL.
+ * Returns the URL to use as the event icon on the calendar for a given
+ * lesson. Reads the first category's term-meta first (category_icon -> icon
+ * -> category_image -> thumbnail_id) and falls back to the post's featured
+ * image. Override with the wpcc_lesson_image filter if your site stores the
+ * icon somewhere else.
  */
 function wpcc_get_lesson_image( $post_id ) {
     $image_url = '';
@@ -283,39 +268,37 @@ function wpcc_get_lesson_image( $post_id ) {
  * ================================================================== */
 
 /**
- * Shortcode: renders the calendar container. The actual FullCalendar
- * initialization happens in custom/js/script.js when the element exists.
+ * Calendar shortcode — renders the container FullCalendar mounts into.
+ * Registered under both spellings because the existing DIVI content uses
+ * the no-underscore form.
  */
 function wpcc_calendar_shortcode( $atts ) {
-    // Scoping wrapper so every rule in style.css stays inside `.wpcc-scope`.
     return '<div class="wpcc-scope"><div id="wp_custom_calendar"></div></div>';
 }
 add_shortcode( 'wp_customcalendar', 'wpcc_calendar_shortcode' );
-add_shortcode( 'wp_custom_calendar', 'wpcc_calendar_shortcode' ); // back-compat alias
+add_shortcode( 'wp_custom_calendar', 'wpcc_calendar_shortcode' );
 
 /**
- * Shortcode: renders the end-of-lesson section (success info box + the
- * "Dodaj lekcję do historii" button, or the yellow banner if the lesson is
- * already completed). Respects the Hide Button metabox.
+ * Single-lesson shortcode — renders ONLY the "Dodaj lekcję do historii"
+ * button. The grey "end of the lesson" success box belongs to the DIVI
+ * template, not to the plugin, so the plugin does not output it anymore.
+ *
+ * Returns an empty string (and therefore outputs nothing visible) when:
+ *   - the visitor is not logged in,
+ *   - the "Hide Button" meta toggle is set on this post, or
+ *   - the current user has already completed this lesson.
+ *
+ * The body-class filter below lets the DIVI template hide its own static
+ * "end of the lesson" heading and grey box in those same cases via CSS.
  */
 function wpcc_single_shortcode( $atts ) {
     global $post;
     if ( ! is_a( $post, 'WP_Post' ) ) {
         return '';
     }
-    return wpcc_render_lesson_section( $post->ID );
-}
-add_shortcode( 'wp_custom_calendar_single', 'wpcc_single_shortcode' );
 
-/* =====================================================================
- * Renderers
- * ================================================================== */
+    $post_id = $post->ID;
 
-/**
- * Renders the full end-of-lesson section for the given post, honoring the
- * user's completion state and the Hide Button toggle.
- */
-function wpcc_render_lesson_section( $post_id ) {
     if ( wpcc_is_button_hidden( $post_id ) ) {
         return '';
     }
@@ -326,57 +309,17 @@ function wpcc_render_lesson_section( $post_id ) {
     }
 
     if ( wpcc_user_completed_lesson( $post_id, $user_id ) ) {
-        return wpcc_render_completed_banner();
+        return '';
     }
 
-    return wpcc_render_success_box() . wpcc_render_complete_button( $post_id );
+    return wpcc_render_complete_button( $post_id );
 }
+add_shortcode( 'wp_customcalendar_single', 'wpcc_single_shortcode' );
+add_shortcode( 'wp_custom_calendar_single', 'wpcc_single_shortcode' );
 
 /**
- * Yellow "already completed" banner.
- */
-function wpcc_render_completed_banner() {
-    return '<div class="wpcc-scope"><div class="wpcc-completed-banner" role="status">'
-        . esc_html__( 'Ta lekcja została już ukończona.', 'wp-custom-calendar' )
-        . '</div></div>';
-}
-
-/**
- * Grey info box that reminds the user to mark the lesson as done.
- * This is the "end of lesson" section from the original design.
- */
-function wpcc_render_success_box() {
-    $title   = esc_html__( 'ŚWIETNIE! LEKCJA UKOŃCZONA!', 'wp-custom-calendar' );
-    $line1   = esc_html__( 'Pamiętaj, żeby dodać lekcję do zrobionych.', 'wp-custom-calendar' );
-    $line2   = esc_html__( 'W ten sposób zapiszesz lekcję w swojej historii nauki. Możesz ją sprawdzić z poziomu swojego profilu.', 'wp-custom-calendar' );
-
-    // Inline SVG for the calendar icon — avoids a dependency on an icon font
-    // (the original used ETmodules) and keeps the box self-contained.
-    $icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="72" height="72" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'
-        . '<rect x="3" y="4.5" width="18" height="17" rx="2" ry="2"/>'
-        . '<line x1="16" y1="2.5" x2="16" y2="6.5"/>'
-        . '<line x1="8"  y1="2.5" x2="8"  y2="6.5"/>'
-        . '<line x1="3"  y1="10"  x2="21" y2="10"/>'
-        . '<circle cx="15.5" cy="16" r="3.2"/>'
-        . '<polyline points="15.5,14.2 15.5,16 17,16.8"/>'
-        . '</svg>';
-
-    $html  = '<div class="wpcc-scope">';
-    $html .= '<div class="wpcc-success-box">';
-    $html .= '  <div class="wpcc-success-box__body">';
-    $html .= '    <h3 class="wpcc-success-box__title">' . $title . '</h3>';
-    $html .= '    <p class="wpcc-success-box__text">' . $line1 . '</p>';
-    $html .= '    <p class="wpcc-success-box__text">' . $line2 . '</p>';
-    $html .= '  </div>';
-    $html .= '  <div class="wpcc-success-box__icon">' . $icon . '</div>';
-    $html .= '</div>';
-    $html .= '</div>';
-    return $html;
-}
-
-/**
- * The "Dodaj lekcję do historii" button, with all the data-* attributes
- * custom/js/script.js expects on click.
+ * Builds the "Dodaj lekcję do historii" button with the data-* attributes
+ * custom/js/script.js reads when it fires the complete_chapter_report AJAX.
  */
 function wpcc_render_complete_button( $post_id ) {
     $user_id = get_current_user_id();
@@ -399,119 +342,65 @@ function wpcc_render_complete_button( $post_id ) {
         esc_attr( $nonce ),
         esc_html__( 'Dodaj lekcję do historii', 'wp-custom-calendar' )
     );
-    $html .= '</div>';
-    $html .= '</div>';
+    $html .= '</div></div>';
     return $html;
 }
 
 /* =====================================================================
- * Auto-inject fallback for lessons without the shortcode
+ * Body classes for DIVI-side conditional hiding
  * ================================================================== */
 
 /**
- * Auto-appends the end-of-lesson section to lesson content that does NOT
- * already contain `[wp_custom_calendar_single]`. This way:
+ * Adds helper body classes on any singular post that contains one of the
+ * plugin's shortcodes, so the DIVI template's static "end of the lesson"
+ * section can hide itself with a single CSS rule.
  *
- *   - Lessons built in DIVI with a Text module containing
- *     [wp_custom_calendar_single] render the section wherever the user
- *     placed that shortcode.
- *   - Legacy lessons without the shortcode still get the button + box at
- *     the end of content automatically.
- *   - The calendar page never gets a button (it has [wp_customcalendar],
- *     so wpcc_is_lesson() returns false for it).
+ * Classes added:
+ *   - wpcc-single-lesson        — every singular view with a plugin shortcode
+ *   - wpcc-lesson-completed     — current user has finished this lesson
+ *   - wpcc-button-hidden        — the per-post "Hide Button" toggle is on
+ *   - wpcc-lesson-hide-section  — composite: use THIS one in your DIVI CSS
+ *                                  class to hide everything in one rule
+ *
+ * Usage in DIVI: on the Row/Section that contains your "THE END OF THE
+ * LESSON" heading + grey success box, set the CSS class "wpcc-end-of-lesson"
+ * (Design tab → Advanced → CSS ID & Classes). Then add one rule to DIVI's
+ * Custom CSS (Theme Options → Custom CSS):
+ *
+ *     body.wpcc-lesson-hide-section .wpcc-end-of-lesson { display: none; }
+ *
+ * That single rule makes the DIVI section disappear whenever the lesson is
+ * already completed or the Hide Button toggle is on — without the plugin
+ * having to touch the template.
  */
-function wpcc_render_lesson_marker( $content ) {
-    if ( ! is_singular() || ! in_the_loop() || ! is_main_query() ) {
-        return $content;
+function wpcc_body_class( $classes ) {
+    if ( is_admin() || ! is_singular() ) {
+        return $classes;
     }
 
     global $post;
-    if ( ! wpcc_is_lesson( $post ) ) {
-        return $content;
+    if ( ! is_a( $post, 'WP_Post' ) ) {
+        return $classes;
+    }
+    if ( ! wpcc_post_has_plugin_shortcode( $post ) ) {
+        return $classes;
     }
 
-    if ( wpcc_post_has_plugin_shortcode( $post ) ) {
-        // The shortcode renders the section itself — don't duplicate it.
-        return $content;
+    $classes[] = 'wpcc-single-lesson';
+
+    $hidden    = wpcc_is_button_hidden( $post->ID );
+    $completed = wpcc_user_completed_lesson( $post->ID );
+
+    if ( $completed ) {
+        $classes[] = 'wpcc-lesson-completed';
+    }
+    if ( $hidden ) {
+        $classes[] = 'wpcc-button-hidden';
+    }
+    if ( $completed || $hidden ) {
+        $classes[] = 'wpcc-lesson-hide-section';
     }
 
-    if ( wpcc_is_button_hidden( $post->ID ) ) {
-        return $content;
-    }
-
-    $user_id = get_current_user_id();
-    if ( ! $user_id ) {
-        return $content;
-    }
-
-    if ( wpcc_user_completed_lesson( $post->ID, $user_id ) ) {
-        return wpcc_render_completed_banner() . $content;
-    }
-
-    return $content . wpcc_render_success_box() . wpcc_render_complete_button( $post->ID );
+    return $classes;
 }
-add_filter( 'the_content', 'wpcc_render_lesson_marker' );
-
-/* =====================================================================
- * "Chapter Complete Button > Hide Button" metabox
- * ================================================================== */
-
-/**
- * Registers a small metabox on every public post type with a Hide Button
- * toggle. When checked, the end-of-lesson section is suppressed on that
- * post — useful for free lessons and posts that aren't lessons at all.
- *
- * Stores the choice in post meta key `_wpcc_hide_button` as `yes` or `no`.
- */
-function wpcc_register_metabox() {
-    $post_types = get_post_types( array( 'public' => true ), 'names' );
-    unset( $post_types['attachment'] );
-
-    foreach ( $post_types as $pt ) {
-        add_meta_box(
-            'wpcc_chapter_complete_button',
-            __( 'Chapter Complete Button', 'wp-custom-calendar' ),
-            'wpcc_metabox_render',
-            $pt,
-            'side',
-            'default'
-        );
-    }
-}
-add_action( 'add_meta_boxes', 'wpcc_register_metabox' );
-
-function wpcc_metabox_render( $post ) {
-    $value   = get_post_meta( $post->ID, '_wpcc_hide_button', true );
-    $checked = in_array( $value, array( 'yes', '1', 1, true, 'true', 'on' ), true );
-    wp_nonce_field( 'wpcc_metabox_save', 'wpcc_metabox_nonce' );
-    ?>
-    <p>
-        <label>
-            <input type="checkbox" name="wpcc_hide_button" value="yes" <?php checked( $checked ); ?> />
-            <strong><?php esc_html_e( 'Hide Button', 'wp-custom-calendar' ); ?></strong>
-        </label>
-    </p>
-    <p class="description">
-        <?php esc_html_e( 'Hide the "Dodaj lekcję do historii" button and success box on this post. Use for free lessons or posts that are not part of the lesson catalogue.', 'wp-custom-calendar' ); ?>
-    </p>
-    <?php
-}
-
-function wpcc_metabox_save( $post_id ) {
-    if ( ! isset( $_POST['wpcc_metabox_nonce'] ) ) {
-        return;
-    }
-    if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['wpcc_metabox_nonce'] ) ), 'wpcc_metabox_save' ) ) {
-        return;
-    }
-    if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
-        return;
-    }
-    if ( ! current_user_can( 'edit_post', $post_id ) ) {
-        return;
-    }
-
-    $hide = isset( $_POST['wpcc_hide_button'] ) ? 'yes' : 'no';
-    update_post_meta( $post_id, '_wpcc_hide_button', $hide );
-}
-add_action( 'save_post', 'wpcc_metabox_save' );
+add_filter( 'body_class', 'wpcc_body_class' );

@@ -50,26 +50,34 @@ jQuery(document).ready(function($) {
                         } else {
                             event.allDay = false;
                         }
-						if(event.imageID){
-							element.find(".fc-title").html("<img src="+event.imageID+" height='25' width='25'>");
-//                             element.find(".fc-title").prepend("<img src="+event.imageID+" height='25' width='25'>");
-                         }
+                        // Replace the whole event cell content with a single
+                        // clean icon. Clears FullCalendar's default decorations
+                        // (dot, title text) so there is never a second image
+                        // stacked below or beside the icon.
+                        element.addClass('wpcc-lesson-event');
+                        element.removeAttr('title');
+                        var $content = element.find('.fc-content');
+                        if (!$content.length) { $content = element; }
+                        $content.empty();
+                        if (event.imageID) {
+                            var $img = $('<img class="wpcc-lesson-icon" alt="" />').attr('src', event.imageID);
+                            $content.append($img);
+                        }
                     },
                     eventMouseover: function(calEvent, jsEvent) {
-                        var tooltip = '<div class="tooltip event-popup-meta" >' + '<span class="ev_title">'+ calEvent.title+'</span><span class="ev_description">'+calEvent.description + '</span></div>';
-                        var $tooltip = $(tooltip).appendTo('body');
-                        $(this).mouseover(function(e) {
-                            $(this).css('z-index', 10000);
-                            $tooltip.fadeIn('500');
-                            $tooltip.fadeTo('10', 1.9);
-                        }).mousemove(function(e) {
-                            $tooltip.css('top', e.pageY + 10);
-                            $tooltip.css('left', e.pageX + 20);
+                        // Title-only tooltip. No excerpt, no image — just the
+                        // lesson title on hover.
+                        $('.wpcc-event-tooltip').remove();
+                        var $tooltip = $('<div class="wpcc-event-tooltip" role="tooltip"></div>').text(calEvent.title || '').appendTo('body');
+                        $(this).css('z-index', 10000);
+                        $tooltip.css({ top: jsEvent.pageY + 10, left: jsEvent.pageX + 20 }).fadeIn(150);
+                        $(this).on('mousemove.wpccTooltip', function(e) {
+                            $tooltip.css({ top: e.pageY + 10, left: e.pageX + 20 });
                         });
                     },
                     eventMouseout: function(calEvent, jsEvent) {
-                        $(this).css('z-index', 8);
-                        $('.tooltip').remove();
+                        $(this).css('z-index', 8).off('mousemove.wpccTooltip');
+                        $('.wpcc-event-tooltip').remove();
                     },
                 });
             });
