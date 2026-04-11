@@ -61,38 +61,57 @@ function wpcc_is_lesson( $post ) {
  * from leaking into every page on the site and conflicting with DIVI.
  */
 function wpcc_enqueue_assets() {
-    // FullCalendar + moment are only needed on the calendar page itself.
+    // Everything the plugin needs is shipped locally in /lib so the plugin
+    // is fully self-contained and does not depend on a third-party CDN.
+    //
+    // FullCalendar v3.9.0 is the version the monolithic `$().fullCalendar()`
+    // API in custom/js/script.js expects; the v4.x files also present in
+    // /lib are leftovers from an unfinished migration and are NOT loaded.
+
     wp_register_style(
         'wpcc-fullcalendar',
-        'https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/3.10.2/fullcalendar.min.css',
+        WPCC_PLUGIN_URL . 'lib/css/fullcalendar.min.css',
         array(),
-        '3.10.2'
+        '3.9.0'
+    );
+    wp_register_style(
+        'wpcc-toastr',
+        WPCC_PLUGIN_URL . 'lib/css/toastr.min.css',
+        array(),
+        '2.1.3'
     );
     wp_register_script(
         'wpcc-moment',
-        'https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js',
+        WPCC_PLUGIN_URL . 'lib/js/moment.min.js',
         array(),
-        '2.29.4',
+        '2.24.0',
         true
     );
     wp_register_script(
         'wpcc-fullcalendar',
-        'https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/3.10.2/fullcalendar.min.js',
+        WPCC_PLUGIN_URL . 'lib/js/fullcalendar.min.js',
         array( 'jquery', 'wpcc-moment' ),
-        '3.10.2',
+        '3.9.0',
+        true
+    );
+    wp_register_script(
+        'wpcc-toastr',
+        WPCC_PLUGIN_URL . 'lib/js/toastr.min.js',
+        array( 'jquery' ),
+        '2.1.3',
         true
     );
 
     wp_register_style(
         'wp-custom-calendar',
         WPCC_PLUGIN_URL . 'custom/css/style.css',
-        array(),
+        array( 'wpcc-fullcalendar', 'wpcc-toastr' ),
         WPCC_VERSION
     );
     wp_register_script(
         'wp-custom-calendar',
         WPCC_PLUGIN_URL . 'custom/js/script.js',
-        array( 'jquery', 'wpcc-fullcalendar' ),
+        array( 'jquery', 'wpcc-fullcalendar', 'wpcc-toastr' ),
         WPCC_VERSION,
         true
     );
@@ -110,9 +129,14 @@ function wpcc_enqueue_assets() {
         return;
     }
 
+    // The calendar itself is only needed where [wp_custom_calendar] renders,
+    // but Toastr is needed on every lesson page too (for the "added" popup),
+    // so enqueue both whenever wpcc_should_load_assets() said yes.
     wp_enqueue_style( 'wpcc-fullcalendar' );
+    wp_enqueue_style( 'wpcc-toastr' );
     wp_enqueue_script( 'wpcc-moment' );
     wp_enqueue_script( 'wpcc-fullcalendar' );
+    wp_enqueue_script( 'wpcc-toastr' );
 
     wp_enqueue_style( 'wp-custom-calendar' );
     wp_enqueue_script( 'wp-custom-calendar' );
