@@ -5,6 +5,62 @@
 * @Last Modified time: 2020-04-28 12:44:11
 */
 jQuery(document).ready(function($) {
+    // Announce to the browser console which version of this script is live.
+    // The number after "v=" should match WPCC_VERSION in wp-custom-calendar.php.
+    // If you refresh a lesson page and don't see this log line, the browser
+    // (or a caching plugin / CDN) is still serving a stale copy of script.js.
+    try { console.log('[wpcc] script.js v=1.3.0 loaded'); } catch (e) {}
+
+    // ---------------------------------------------------------------------
+    // Auto-hide the "THE END OF THE LESSON" DIVI section on completed /
+    // hidden lessons. Runs only when body has wpcc-lesson-hide-section (set
+    // by wpcc_body_class in PHP). We can't rely on the site owner tagging
+    // the DIVI row with a CSS class, because on thebluetree.pl the row
+    // lives in a Theme Builder template they can't easily find. So we walk
+    // the DOM, look for the known heading text, and hide the nearest DIVI
+    // section ancestor.
+    // ---------------------------------------------------------------------
+    (function autoHideEndOfLesson() {
+        if (!document.body || !document.body.classList ||
+            !document.body.classList.contains('wpcc-lesson-hide-section')) {
+            return;
+        }
+        var needles = [
+            'END OF THE LESSON',
+            'END OF LESSON',
+            'KONIEC LEKCJI',
+            'KONIEC THE LESSON'
+        ];
+        var $candidates = $('h1, h2, h3, h4, h5, h6, .et_pb_text_inner');
+        var $found = null;
+        $candidates.each(function() {
+            var text = ($(this).text() || '').trim().toUpperCase();
+            for (var i = 0; i < needles.length; i++) {
+                if (text.indexOf(needles[i]) !== -1) {
+                    $found = $(this);
+                    return false; // break .each
+                }
+            }
+        });
+        if (!$found || !$found.length) {
+            try { console.log('[wpcc] end-of-lesson heading not found'); } catch (e) {}
+            return;
+        }
+        var $target = $found.closest('.et_pb_section');
+        if (!$target.length) { $target = $found.closest('.et_pb_row'); }
+        if (!$target.length) { $target = $found.closest('section'); }
+        if (!$target.length) { $target = $found.parents('[class*="et_pb_"]').last(); }
+        if ($target.length) {
+            $target.addClass('wpcc-end-of-lesson').hide();
+            try { console.log('[wpcc] end-of-lesson section hidden'); } catch (e) {}
+        } else {
+            // Last resort: hide the heading itself plus its next sibling
+            // (typically the grey success box module).
+            $found.hide();
+            $found.next().hide();
+        }
+    })();
+
     if (document.getElementById('wp_custom_calendar')) {
         $(window).bind("load", function(){
             var data = {
