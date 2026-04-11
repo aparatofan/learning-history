@@ -65,16 +65,51 @@ function wpcc_post_has_plugin_shortcode( $post ) {
 }
 
 /**
- * Load the plugin's CSS/JS only on pages that actually use one of its
- * shortcodes. This is what keeps the DIVI static CSS cache clean — the rules
- * in style.css never touch pages that don't reference the plugin.
+ * Load the plugin's CSS/JS on pages that need them:
+ *
+ *   1. Any page containing a plugin shortcode in its post_content (e.g. the
+ *      history page with [wp_customcalendar]).
+ *   2. Any singular post where the current user has already completed the
+ *      lesson — needed so the yellow "already in history" banner and the JS
+ *      that auto-hides the "end of the lesson" section can actually run even
+ *      when the lesson layout comes from a DIVI Theme Builder template and
+ *      the shortcode isn't literally in the post_content.
+ *   3. Any singular post with the "Hide Button" toggle on, for the same
+ *      reason.
  */
 function wpcc_should_load_assets() {
     if ( is_admin() ) {
         return false;
     }
     global $post;
-    return wpcc_post_has_plugin_shortcode( $post );
+    if ( ! is_a( $post, 'WP_Post' ) ) {
+        return false;
+    }
+    if ( wpcc_post_has_plugin_shortcode( $post ) ) {
+        return true;
+    }
+    if ( is_singular() && wpcc_user_completed_lesson( $post->ID ) ) {
+        return true;
+    }
+    if ( is_singular() && wpcc_is_button_hidden( $post->ID ) ) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Returns a cache-busting version string for an asset inside the plugin.
+ * Uses the file's mtime so a simple git pull / SFTP upload changes the URL
+ * query string automatically — no plugin-version bump required. Falls back
+ * to WPCC_VERSION if the file can't be stat'd.
+ */
+function wpcc_asset_version( $relative_path ) {
+    $full = WPCC_PLUGIN_DIR . ltrim( $relative_path, '/' );
+    $mtime = @filemtime( $full );
+    if ( $mtime ) {
+        return WPCC_VERSION . '.' . $mtime;
+    }
+    return WPCC_VERSION;
 }
 
 /* =====================================================================
@@ -120,13 +155,13 @@ function wpcc_enqueue_assets() {
         'wp-custom-calendar',
         WPCC_PLUGIN_URL . 'custom/css/style.css',
         array( 'wpcc-fullcalendar', 'wpcc-toastr' ),
-        WPCC_VERSION
+        wpcc_asset_version( 'custom/css/style.css' )
     );
     wp_register_script(
         'wp-custom-calendar',
         WPCC_PLUGIN_URL . 'custom/js/script.js',
         array( 'jquery', 'wpcc-fullcalendar', 'wpcc-toastr' ),
-        WPCC_VERSION,
+        wpcc_asset_version( 'custom/js/script.js' ),
         true
     );
 
@@ -382,14 +417,22 @@ function wpcc_body_class( $classes ) {
     if ( ! is_a( $post, 'WP_Post' ) ) {
         return $classes;
     }
-    if ( ! wpcc_post_has_plugin_shortcode( $post ) ) {
+
+    $hidden    = wpcc_is_button_hidden( $post->ID );
+    $completed = wpcc_user_completed_lesson( $post->ID );
+
+    // NOTE: we intentionally do NOT require the shortcode to live inside
+    // post_content here. On thebluetree.pl the lesson layout comes from a
+    // DIVI Theme Builder template, so [wp_customcalendar_single] is not in
+    // the post's post_content — it is injected by the template at render
+    // time. Gating on "completed" / "hide_button" is specific enough: a
+    // regular blog post cannot have a wpcc_tracking row unless the owner
+    // deliberately created one.
+    if ( ! $completed && ! $hidden ) {
         return $classes;
     }
 
     $classes[] = 'wpcc-single-lesson';
-
-    $hidden    = wpcc_is_button_hidden( $post->ID );
-    $completed = wpcc_user_completed_lesson( $post->ID );
 
     if ( $completed ) {
         $classes[] = 'wpcc-lesson-completed';
@@ -397,9 +440,7 @@ function wpcc_body_class( $classes ) {
     if ( $hidden ) {
         $classes[] = 'wpcc-button-hidden';
     }
-    if ( $completed || $hidden ) {
-        $classes[] = 'wpcc-lesson-hide-section';
-    }
+    $classes[] = 'wpcc-lesson-hide-section';
 
     return $classes;
 }
@@ -411,11 +452,15 @@ add_filter( 'body_class', 'wpcc_body_class' );
 
 /**
  * Prepends a yellow banner to the top of the post content on lessons the
- * current user has already completed. Only fires on the main query, on a
- * singular view, and only when the post contains a plugin shortcode — that
- * way it can never leak into the calendar page, the blog index, or into
- * random DIVI modules that re-run the_content filter (like post excerpts
- * in related-post blocks).
+ * current user has already completed. Gated ONLY on:
+ *   - main query, singular, WP_Post (so related-posts modules and widgets
+ *     re-running the_content can't trigger it), AND
+ *   - the current user has a wpcc_tracking row for this post.
+ *
+ * We do NOT also check for a plugin shortcode in post_content, because on
+ * thebluetree.pl the shortcode is injected by a DIVI Theme Builder template
+ * and never appears in post_content. Gating on "completed" is specific
+ * enough on its own.
  *
  * Style lives in custom/css/style.css under .wpcc-completed-banner.
  */
@@ -429,9 +474,6 @@ function wpcc_prepend_completed_banner( $content ) {
 
     global $post;
     if ( ! is_a( $post, 'WP_Post' ) ) {
-        return $content;
-    }
-    if ( ! wpcc_post_has_plugin_shortcode( $post ) ) {
         return $content;
     }
     if ( ! wpcc_user_completed_lesson( $post->ID ) ) {
@@ -451,3 +493,31 @@ function wpcc_prepend_completed_banner( $content ) {
     return $banner . $content;
 }
 add_filter( 'the_content', 'wpcc_prepend_completed_banner', 9 );
+
+/* =====================================================================
+ * Diagnostic footer comment
+ * ================================================================== */
+
+/**
+ * Emits an HTML comment in the footer so the site owner can verify from
+ * "View Source" whether the round-6 code is actually running on the server
+ * (and which state the plugin thinks the current page is in). Cheap, only
+ * runs on the frontend.
+ */
+function wpcc_debug_footer_comment() {
+    if ( is_admin() ) {
+        return;
+    }
+    global $post;
+    $parts = array(
+        'wpcc v=' . WPCC_VERSION,
+    );
+    if ( is_a( $post, 'WP_Post' ) ) {
+        $parts[] = 'post_id=' . (int) $post->ID;
+        $parts[] = 'has_shortcode=' . ( wpcc_post_has_plugin_shortcode( $post ) ? '1' : '0' );
+        $parts[] = 'completed=' . ( wpcc_user_completed_lesson( $post->ID ) ? '1' : '0' );
+        $parts[] = 'hidden=' . ( wpcc_is_button_hidden( $post->ID ) ? '1' : '0' );
+    }
+    echo "\n<!-- " . esc_html( implode( ' ', $parts ) ) . " -->\n";
+}
+add_action( 'wp_footer', 'wpcc_debug_footer_comment', 99 );
