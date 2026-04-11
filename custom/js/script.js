@@ -70,7 +70,26 @@ jQuery(document).ready(function($) {
             var event_data = "";
             $.post(wp_customcalendar.ajax_url, data, function (event_response) {
                 event_data = JSON.parse(event_response);
-                console.log(event_data);
+                // Client-side safety dedup. The server already dedupes by
+                // post_id in getevents.php, but if the same post_id ever
+                // slips through (legacy rows with different titles, or
+                // post_id = 0) we still refuse to render two icons on the
+                // same day for the same lesson.
+                try {
+                    var seen = {};
+                    var deduped = [];
+                    for (var i = 0; i < event_data.length; i++) {
+                        var ev = event_data[i];
+                        var key = ev.post_id
+                            ? 'p:' + ev.post_id
+                            : 't:' + (ev.title || '') + '|d:' + (ev.start || '');
+                        if (seen[key]) { continue; }
+                        seen[key] = true;
+                        deduped.push(ev);
+                    }
+                    event_data = deduped;
+                } catch (e) {}
+                try { console.log('[wpcc] calendar events:', event_data); } catch (e) {}
             });
             $(document).ajaxComplete(function(){
                 var calendar = $('#wp_custom_calendar').fullCalendar({
