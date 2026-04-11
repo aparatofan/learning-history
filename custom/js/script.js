@@ -165,27 +165,53 @@ jQuery(document).ready(function($) {
     }
     $('#btn_complete_chapter').click(function(){
         var $button = $(this);
-		$button.parents('.singlecourse-complete-wrapper').hide();
+        var $wrapper = $button.parents('.singlecourse-complete-wrapper');
         var currentDate = new Date();
-        currentDate =  moment(currentDate).format("Y-MM-DD HH:mm:ss");
-        // $button.width( $button.width() ).text('...').prop('disabled', true);
+        // Use YYYY for the year token — "Y" in moment emits ISO-8601 signed
+        // year (can be +10000 for out-of-range). YYYY is the safe MySQL
+        // DATETIME-compatible form.
+        currentDate =  moment(currentDate).format("YYYY-MM-DD HH:mm:ss");
         var course_data = {
             'action' : 'complete_chapter_report',
              dataType: 'json',
             'post_id': $button.data('post_id'),
-			'image_id': $button.data('image_id'),
+            'image_id': $button.data('image_id'),
             'customer_id': $button.data('customer_id'),
             'customer_name': $button.data('customer_name'),
             'currentDate': currentDate,
             'nonce'  : $button.data('nonce'),
         };
+        // Hide the wrapper only optimistically — if the server rejects, we
+        // show it again so the user can retry without reloading.
+        $wrapper.hide();
         $.post(wp_customcalendar.ajax_url, course_data, function(response) {
-			var res_data = jQuery.parseJSON(response.data);
-			console.log(res_data['status_class']);
-			Toast(res_data['status_class'], 'toast-bottom-full-width', res_data['message']);
-			setTimeout(function() {
-				document.location.reload()
-		  }, 2500);
+            var res_data;
+            try {
+                res_data = (response && response.data) ? jQuery.parseJSON(response.data) : null;
+            } catch (e) { res_data = null; }
+            if (!res_data) {
+                try { console.log('[wpcc] bad complete_chapter_report response:', response); } catch (e) {}
+                Toast('error', 'toast-bottom-full-width', 'Unexpected server response. See console.');
+                $wrapper.show();
+                return;
+            }
+            try { console.log('[wpcc] complete_chapter_report:', res_data); } catch (e) {}
+            Toast(res_data['status_class'], 'toast-bottom-full-width', res_data['message']);
+            if (res_data['status_class'] === 'success' || res_data['status_class'] === 'info') {
+                // Only reload on actual success so the user sees the yellow
+                // banner appear. On error, keep the page so the toast stays
+                // visible and the button is still usable.
+                setTimeout(function() {
+                    document.location.reload();
+                }, 1500);
+            } else {
+                // Error — put the button back so the user can try again.
+                $wrapper.show();
+            }
+        }).fail(function(jqXHR, textStatus, errorThrown) {
+            try { console.log('[wpcc] AJAX failed:', textStatus, errorThrown, jqXHR); } catch (e) {}
+            Toast('error', 'toast-bottom-full-width', 'Network error: ' + textStatus);
+            $wrapper.show();
         });
     });
 	 function Toast(type, css, msg) {

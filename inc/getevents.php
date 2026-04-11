@@ -46,12 +46,27 @@ function getprivate_event_callback() {
             }
             $seen[ $post_id ] = true;
 
+            // Resolve the icon at query time rather than trusting the stored
+            // imageID column. Legacy rows (pre-1.3.0) stored the post's
+            // featured image there, which rendered as a rectangular photo on
+            // the calendar. By calling wpcc_get_lesson_image() here we always
+            // get the current category icon for the lesson — no need to
+            // rewrite the DB. Falls back to the stored value if the helper
+            // is unavailable.
+            $resolved_icon = '';
+            if ( $post_id && function_exists( 'wpcc_get_lesson_image' ) ) {
+                $resolved_icon = wpcc_get_lesson_image( $post_id );
+            }
+            if ( empty( $resolved_icon ) ) {
+                $resolved_icon = isset( $row->imageID ) ? $row->imageID : '';
+            }
+
             $event_array[] = array(
                 'id'          => isset( $row->id ) ? (int) $row->id : 0,
                 'title'       => isset( $row->title ) ? $row->title : '',
                 'description' => isset( $row->description ) ? $row->description : '',
                 'start'       => isset( $row->start ) ? $row->start : '',
-                'imageID'     => isset( $row->imageID ) ? $row->imageID : '',
+                'imageID'     => $resolved_icon,
                 'allDay'      => true,
                 'post_id'     => $post_id,
             );

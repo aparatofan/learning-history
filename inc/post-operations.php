@@ -138,12 +138,17 @@ function wpcc_complete_chapter_report_callback() {
     );
 
     if ( false === $inserted ) {
+        // Surface the real MySQL error to the toast so it's actually
+        // debuggable. $wpdb->last_error is the raw error message from the
+        // driver, e.g. "Unknown column 'foo' in 'field list'" or "Data too
+        // long for column 'title' at row 1".
+        $db_error = $wpdb->last_error ? ' (' . $wpdb->last_error . ')' : '';
         wp_send_json(
             array(
                 'data' => wp_json_encode(
                     array(
                         'status_class' => 'error',
-                        'message'      => __( 'Nie udało się zapisać lekcji. Spróbuj ponownie.', 'wp-custom-calendar' ),
+                        'message'      => __( 'Nie udało się zapisać lekcji. Spróbuj ponownie.', 'wp-custom-calendar' ) . $db_error,
                     )
                 ),
             )
