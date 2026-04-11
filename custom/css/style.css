@@ -61,15 +61,22 @@ body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_module {
     color: #000 !important;
 }
 
+/*
+ * NOTE: these rules must NOT use display:flex. FullCalendar v3 measures row
+ * heights based on natural content flow; a flex child can collapse to its
+ * min-content size (effectively 0px before an <img> loads), so two tall
+ * events render one-above-the-other visually but the day cell is only
+ * sized for one event — causing overflow into the next week row. Plain
+ * block layout + a fixed-size image box keeps the row height deterministic
+ * regardless of image load state.
+ */
 .wpcc-scope #wp_custom_calendar .fc-event {
     border: 0 !important;
     box-shadow: none !important;
     background: transparent !important;
     padding: 0 !important;
     margin: 2px auto !important;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    display: block;
     text-align: center;
 }
 
@@ -77,9 +84,9 @@ body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_module {
     padding: 0 !important;
     border: 0 !important;
     background: transparent !important;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    display: block;
+    text-align: center;
+    line-height: 0; /* kills the phantom baseline gap under inline images */
 }
 
 .wpcc-scope #wp_custom_calendar .fc-event .fc-title {
@@ -88,17 +95,20 @@ body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_module {
 
 /*
  * Lesson image inside a calendar cell. We render the post's featured image
- * here (see wpcc_get_lesson_image), so sizing is landscape-friendly:
- * max-width / max-height rather than a rigid square. Natural aspect ratio
- * is preserved, rectangular covers fit inside an 88x66 box, square
- * category-icon fallbacks still display at up to 66x66.
+ * here (see wpcc_get_lesson_image), at fixed 88x66 on desktop / 56x44 on
+ * mobile. Fixed dimensions (not max-*) are critical: the browser reserves
+ * the full box size BEFORE the image bytes load, so FullCalendar's row
+ * height measurement is correct on first render and multi-event days don't
+ * overflow into the next week's row.
+ *
+ * object-fit: contain preserves the original aspect ratio inside the box
+ * (landscape covers stay landscape, square category-icon fallbacks stay
+ * square), so nothing is cropped.
  */
 .wpcc-scope #wp_custom_calendar .wpcc-lesson-icon {
-    display: block;
-    max-width: 88px;
-    max-height: 66px;
-    width: auto;
-    height: auto;
+    display: inline-block;
+    width: 88px;
+    height: 66px;
     margin: 0 auto;
     padding: 0;
     border: 0;
@@ -106,12 +116,13 @@ body.wpcc-lesson-hide-section .wpcc-end-of-lesson.et_pb_module {
     background: transparent;
     object-fit: contain;
     pointer-events: none;
+    vertical-align: top;
 }
 
 @media (max-width: 560px) {
     .wpcc-scope #wp_custom_calendar .wpcc-lesson-icon {
-        max-width: 56px;
-        max-height: 44px;
+        width: 56px;
+        height: 44px;
     }
 }
 
