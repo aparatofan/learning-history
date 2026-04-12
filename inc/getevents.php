@@ -25,13 +25,14 @@ function getprivate_event_callback() {
     $wpcct_name = $wpdb->prefix . 'wpcc_tracking';
 
     // Newest row first so when we dedupe below we keep the most recent record
-    // for each lesson. This matters because earlier versions of the plugin
-    // could insert multiple rows per lesson (and with the pre-fix imageID =
-    // featured image instead of the category icon), which would render as two
-    // stacked images in the calendar cell.
+    // for each lesson. post_id > 0 drops legacy orphan rows from the old
+    // pre-rewrite plugin, which stored the shared category icon in imageID
+    // without populating post_id — those rows rendered as stale icons on
+    // top of the real featured image for the same lesson and could not be
+    // deduped against it (post_id 0 != real post_id).
     $results = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT * FROM $wpcct_name WHERE customerID = %d ORDER BY id DESC",
+            "SELECT * FROM $wpcct_name WHERE customerID = %d AND post_id > 0 ORDER BY id DESC",
             $user_id
         )
     );
@@ -46,12 +47,27 @@ function getprivate_event_callback() {
             }
             $seen[ $post_id ] = true;
 
+            // Resolve the icon at query time rather than trusting the stored
+            // imageID column. Legacy rows (pre-1.3.0) stored the post's
+            // featured image there, which rendered as a rectangular photo on
+            // the calendar. By calling wpcc_get_lesson_image() here we always
+            // get the current category icon for the lesson — no need to
+            // rewrite the DB. Falls back to the stored value if the helper
+            // is unavailable.
+            $resolved_icon = '';
+            if ( $post_id && function_exists( 'wpcc_get_lesson_image' ) ) {
+                $resolved_icon = wpcc_get_lesson_image( $post_id );
+            }
+            if ( empty( $resolved_icon ) ) {
+                $resolved_icon = isset( $row->imageID ) ? $row->imageID : '';
+            }
+
             $event_array[] = array(
                 'id'          => isset( $row->id ) ? (int) $row->id : 0,
                 'title'       => isset( $row->title ) ? $row->title : '',
                 'description' => isset( $row->description ) ? $row->description : '',
                 'start'       => isset( $row->start ) ? $row->start : '',
-                'imageID'     => isset( $row->imageID ) ? $row->imageID : '',
+                'imageID'     => $resolved_icon,
                 'allDay'      => true,
                 'post_id'     => $post_id,
             );

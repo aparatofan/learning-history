@@ -266,44 +266,60 @@ function wpcc_is_button_hidden( $post_id ) {
 }
 
 /**
- * Returns the URL to use as the event icon on the calendar for a given
- * lesson. Reads the first category's term-meta first (category_icon -> icon
- * -> category_image -> thumbnail_id) and falls back to the post's featured
- * image. Override with the wpcc_lesson_image filter if your site stores the
- * icon somewhere else.
+ * Returns the URL to use as the event image on the calendar for a given
+ * lesson.
+ *
+ * thebluetree.pl wants the calendar to show each lesson's featured image
+ * (book cover, portrait, cover art) rather than the shared category icon —
+ * it gives the month view a lot more visual variety. So we look up the
+ * post's featured image first, and only fall back to the category's
+ * `category_icon` / `icon` / `category_image` / `thumbnail_id` term meta
+ * if the post has no featured image at all. Override the whole thing with
+ * the `wpcc_lesson_image` filter if your site needs a different rule.
  */
 function wpcc_get_lesson_image( $post_id ) {
     $image_url = '';
 
-    $categories = get_the_category( $post_id );
-    if ( ! empty( $categories ) ) {
-        $meta_keys = array( 'category_icon', 'icon', 'category_image', 'thumbnail_id' );
-        foreach ( $categories as $cat ) {
-            foreach ( $meta_keys as $meta_key ) {
-                $value = get_term_meta( $cat->term_id, $meta_key, true );
-                if ( empty( $value ) ) {
-                    continue;
-                }
-                if ( is_numeric( $value ) ) {
-                    $resolved = wp_get_attachment_url( (int) $value );
-                    if ( $resolved ) {
-                        $image_url = $resolved;
-                        break 2;
-                    }
-                    continue;
-                }
-                if ( is_string( $value ) && filter_var( $value, FILTER_VALIDATE_URL ) ) {
-                    $image_url = $value;
-                    break 2;
-                }
-            }
+    // Prefer the post's featured image. "medium" is used because the
+    // thumbnail size on many DIVI sites is cropped to 150x150 square, which
+    // makes landscape lesson covers look awkward; "medium" keeps the
+    // original aspect ratio while staying small enough for calendar cells.
+    if ( has_post_thumbnail( $post_id ) ) {
+        $thumb = get_the_post_thumbnail_url( $post_id, 'medium' );
+        if ( ! $thumb ) {
+            $thumb = get_the_post_thumbnail_url( $post_id, 'thumbnail' );
+        }
+        if ( $thumb ) {
+            $image_url = $thumb;
         }
     }
 
-    if ( empty( $image_url ) && has_post_thumbnail( $post_id ) ) {
-        $thumb = get_the_post_thumbnail_url( $post_id, 'thumbnail' );
-        if ( $thumb ) {
-            $image_url = $thumb;
+    // Fallback: first category's icon. Kept so lessons without a featured
+    // image still render something instead of a blank calendar cell.
+    if ( empty( $image_url ) ) {
+        $categories = get_the_category( $post_id );
+        if ( ! empty( $categories ) ) {
+            $meta_keys = array( 'category_icon', 'icon', 'category_image', 'thumbnail_id' );
+            foreach ( $categories as $cat ) {
+                foreach ( $meta_keys as $meta_key ) {
+                    $value = get_term_meta( $cat->term_id, $meta_key, true );
+                    if ( empty( $value ) ) {
+                        continue;
+                    }
+                    if ( is_numeric( $value ) ) {
+                        $resolved = wp_get_attachment_url( (int) $value );
+                        if ( $resolved ) {
+                            $image_url = $resolved;
+                            break 2;
+                        }
+                        continue;
+                    }
+                    if ( is_string( $value ) && filter_var( $value, FILTER_VALIDATE_URL ) ) {
+                        $image_url = $value;
+                        break 2;
+                    }
+                }
+            }
         }
     }
 

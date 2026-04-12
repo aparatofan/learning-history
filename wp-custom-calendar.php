@@ -96,3 +96,66 @@ function wpcc_clear_divi_static_css() {
 // Also clear DIVI's static CSS whenever a lesson is added, so the calendar
 // icon / yellow banner become visible immediately without a manual cache purge.
 add_action( 'wpcc_lesson_completed', 'wpcc_clear_divi_static_css' );
+
+/**
+ * One-shot schema migration.
+ *
+ * An older version of the plugin (or a manually imported schema) shipped a
+ * UNIQUE INDEX named `unique_complete` on the wpcc_tracking table. That index
+ * is on a legacy column this plugin no longer writes to, so every new INSERT
+ * defaults that column to 0 and immediately collides with the previous row,
+ * producing:
+ *
+ *     Duplicate entry '45-0' for key 'unique_complete'
+ *
+ * The new plugin already has its own UNIQUE KEY `customer_post (customerID,
+ * post_id)` from dbDelta(), so we can safely drop the orphan `unique_complete`
+ * index. We gate the migration on an option so it only runs once per install.
+ * Also runs on plugins_loaded (not just activation) so an existing install
+ * gets fixed on the next page load without the user having to deactivate /
+ * reactivate the plugin.
+ */
+function wpcc_maybe_migrate_schema() {
+    $current = get_option( 'wpcc_schema_version', '0' );
+    if ( version_compare( $current, '1.3.1', '>=' ) ) {
+        return;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'wpcc_tracking';
+
+    // Bail out quickly if the table doesn't exist yet (plugin not activated).
+    $table_exists = $wpdb->get_var(
+        $wpdb->prepare( 'SHOW TABLES LIKE %s', $table )
+    );
+    if ( ! $table_exists ) {
+        return;
+    }
+
+    // Drop the legacy unique_complete index if it exists. Use SHOW INDEX so
+    // we don't attempt a DROP on a key that isn't there (which would log an
+    // error on strict hosts).
+    $has_legacy = $wpdb->get_var(
+        "SHOW INDEX FROM `$table` WHERE Key_name = 'unique_complete'"
+    );
+    if ( $has_legacy ) {
+        $wpdb->query( "ALTER TABLE `$table` DROP INDEX `unique_complete`" );
+    }
+
+    // Make sure our intended unique key exists. dbDelta() normally handles
+    // this on activation, but older tables may not have it.
+    $has_customer_post = $wpdb->get_var(
+        "SHOW INDEX FROM `$table` WHERE Key_name = 'customer_post'"
+    );
+    if ( ! $has_customer_post ) {
+        // Only add it if we can — a table that already contains duplicate
+        // (customerID, post_id) pairs will reject the ALTER. In that case
+        // we leave it to the admin to clean up.
+        $wpdb->query(
+            "ALTER TABLE `$table` ADD UNIQUE KEY `customer_post` (`customerID`, `post_id`)"
+        );
+    }
+
+    update_option( 'wpcc_schema_version', '1.3.1' );
+}
+add_action( 'plugins_loaded', 'wpcc_maybe_migrate_schema' );
