@@ -8,24 +8,14 @@
  *
  *   - Enqueues CSS/JS only on pages that use a plugin shortcode.
  *   - Provides [wp_customcalendar]         — the calendar on the history page.
- *   - Provides [wp_customcalendar_single]  — the "Dodaj lekcję do historii"
- *                                            button, or nothing when the
- *                                            lesson is already completed or
- *                                            the "Hide Button" toggle is on.
- *   - Adds body classes wpcc-lesson-completed / wpcc-button-hidden so the
- *     DIVI "end of the lesson" section in the template can be hidden with a
- *     single CSS rule without the plugin having to touch the template.
- *
- * Things the plugin explicitly does NOT do anymore (they were causing the
- * duplicate section / "not original" box / Hide-Button-is-ignored problems):
- *
- *   - Does not render its own grey success box. That lives in the DIVI
- *     template as static content and should stay there — it's "the original".
- *   - Does not filter the_content to auto-append anything. Placement is 100%
- *     controlled by where the user drops [wp_customcalendar_single] in DIVI.
- *   - Does not register its own "Hide Button" metabox. The site already has
- *     one (the Yes/No toggle in the post edit screen); we just read whatever
- *     meta key it writes to.
+ *   - Provides [wp_customcalendar_single]  — registered so DIVI templates
+ *                                            don't render raw shortcode text,
+ *                                            but always returns empty. The
+ *                                            button is appended via the_content.
+ *   - Appends the "Dodaj lekcję do historii" button at the bottom of post
+ *     content via the_content filter (wpcc_append_complete_button).
+ *   - Adds body class wpcc-lesson-hide-section on ALL singular pages so the
+ *     DonDivi / "THE END OF THE LESSON" section is always hidden.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -365,45 +355,15 @@ add_shortcode( 'wp_customcalendar', 'wpcc_calendar_shortcode' );
 add_shortcode( 'wp_custom_calendar', 'wpcc_calendar_shortcode' );
 
 /**
- * Single-lesson shortcode — renders ONLY the "Dodaj lekcję do historii"
- * button. The grey "end of the lesson" success box belongs to the DIVI
- * template, not to the plugin, so the plugin does not output it anymore.
+ * Single-lesson shortcode — now always returns empty.
  *
- * Returns an empty string (and therefore outputs nothing visible) when:
- *   - the visitor is not logged in,
- *   - the "Hide Button" meta toggle is set on this post, or
- *   - the current user has already completed this lesson.
- *
- * The body-class filter below lets the DIVI template hide its own static
- * "end of the lesson" heading and grey box in those same cases via CSS.
+ * The button is appended to post content by wpcc_append_complete_button()
+ * via the_content filter instead. The shortcode still needs to be
+ * registered so that [wp_customcalendar_single] in DIVI templates does
+ * not render as raw text, but it produces no output.
  */
 function wpcc_single_shortcode( $atts ) {
-    global $post;
-    if ( ! is_a( $post, 'WP_Post' ) ) {
-        return '';
-    }
-
-    $post_id = $post->ID;
-
-    if ( wpcc_is_button_hidden( $post_id ) ) {
-        return '';
-    }
-
-    $user_id = get_current_user_id();
-    if ( ! $user_id ) {
-        return '';
-    }
-
-    if ( wpcc_user_completed_lesson( $post_id, $user_id ) ) {
-        return '';
-    }
-
-    // The button needs the plugin's CSS (blue pill) and JS (click handler)
-    // to be useful. Force-enqueue both now, in case the early wp_enqueue_
-    // scripts gate missed this page.
-    wpcc_force_enqueue_assets();
-
-    return wpcc_render_complete_button( $post_id );
+    return '';
 }
 add_shortcode( 'wp_customcalendar_single', 'wpcc_single_shortcode' );
 add_shortcode( 'wp_custom_calendar_single', 'wpcc_single_shortcode' );
@@ -442,27 +402,16 @@ function wpcc_render_complete_button( $post_id ) {
  * ================================================================== */
 
 /**
- * Adds helper body classes on any singular post that contains one of the
- * plugin's shortcodes, so the DIVI template's static "end of the lesson"
- * section can hide itself with a single CSS rule.
+ * Adds helper body classes on every singular page.
  *
  * Classes added:
- *   - wpcc-single-lesson        — every singular view with a plugin shortcode
+ *   - wpcc-single-lesson        — every singular view
  *   - wpcc-lesson-completed     — current user has finished this lesson
  *   - wpcc-button-hidden        — the per-post "Hide Button" toggle is on
- *   - wpcc-lesson-hide-section  — composite: use THIS one in your DIVI CSS
- *                                  class to hide everything in one rule
- *
- * Usage in DIVI: on the Row/Section that contains your "THE END OF THE
- * LESSON" heading + grey success box, set the CSS class "wpcc-end-of-lesson"
- * (Design tab → Advanced → CSS ID & Classes). Then add one rule to DIVI's
- * Custom CSS (Theme Options → Custom CSS):
- *
- *     body.wpcc-lesson-hide-section .wpcc-end-of-lesson { display: none; }
- *
- * That single rule makes the DIVI section disappear whenever the lesson is
- * already completed or the Hide Button toggle is on — without the plugin
- * having to touch the template.
+ *   - wpcc-lesson-hide-section  — ALWAYS added on singular pages so the
+ *                                  DonDivi / "THE END OF THE LESSON" section
+ *                                  is hidden for everyone, not just users
+ *                                  who completed the lesson.
  */
 function wpcc_body_class( $classes ) {
     if ( is_admin() || ! is_singular() ) {
@@ -474,29 +423,15 @@ function wpcc_body_class( $classes ) {
         return $classes;
     }
 
-    $hidden    = wpcc_is_button_hidden( $post->ID );
-    $completed = wpcc_user_completed_lesson( $post->ID );
-
-    // NOTE: we intentionally do NOT require the shortcode to live inside
-    // post_content here. On thebluetree.pl the lesson layout comes from a
-    // DIVI Theme Builder template, so [wp_customcalendar_single] is not in
-    // the post's post_content — it is injected by the template at render
-    // time. Gating on "completed" / "hide_button" is specific enough: a
-    // regular blog post cannot have a wpcc_tracking row unless the owner
-    // deliberately created one.
-    if ( ! $completed && ! $hidden ) {
-        return $classes;
-    }
-
     $classes[] = 'wpcc-single-lesson';
+    $classes[] = 'wpcc-lesson-hide-section';
 
-    if ( $completed ) {
+    if ( wpcc_user_completed_lesson( $post->ID ) ) {
         $classes[] = 'wpcc-lesson-completed';
     }
-    if ( $hidden ) {
+    if ( wpcc_is_button_hidden( $post->ID ) ) {
         $classes[] = 'wpcc-button-hidden';
     }
-    $classes[] = 'wpcc-lesson-hide-section';
 
     return $classes;
 }
@@ -549,6 +484,54 @@ function wpcc_prepend_completed_banner( $content ) {
     return $banner . $content;
 }
 add_filter( 'the_content', 'wpcc_prepend_completed_banner', 9 );
+
+/* =====================================================================
+ * Append "Dodaj lekcję do historii" button at the bottom of post content
+ * ================================================================== */
+
+/**
+ * Appends the "Dodaj lekcję do historii" button directly to the post
+ * content on singular pages for logged-in users who have not yet completed
+ * the lesson.
+ *
+ * This replaces the old approach where the button was rendered by the
+ * [wp_customcalendar_single] shortcode inside the DonDivi "end of the
+ * lesson" section. Since that entire section is now hidden on all lesson
+ * pages, the button must be injected independently.
+ *
+ * Runs at priority 20 (after wpcc_prepend_completed_banner at 9) so the
+ * banner comes first and the button is at the very bottom.
+ */
+function wpcc_append_complete_button( $content ) {
+    if ( is_admin() ) {
+        return $content;
+    }
+    if ( ! in_the_loop() || ! is_main_query() || ! is_singular() ) {
+        return $content;
+    }
+
+    global $post;
+    if ( ! is_a( $post, 'WP_Post' ) ) {
+        return $content;
+    }
+
+    $user_id = get_current_user_id();
+    if ( ! $user_id ) {
+        return $content;
+    }
+
+    if ( wpcc_is_button_hidden( $post->ID ) ) {
+        return $content;
+    }
+    if ( wpcc_user_completed_lesson( $post->ID, $user_id ) ) {
+        return $content;
+    }
+
+    wpcc_force_enqueue_assets();
+
+    return $content . wpcc_render_complete_button( $post->ID );
+}
+add_filter( 'the_content', 'wpcc_append_complete_button', 20 );
 
 /* =====================================================================
  * Diagnostic footer comment
