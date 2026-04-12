@@ -217,6 +217,40 @@ function wpcc_user_completed_lesson( $post_id, $user_id = 0 ) {
 }
 
 /**
+ * Returns true when the post belongs to one of the lesson categories.
+ *
+ * Only posts in these categories should show the "Dodaj lekcję do historii"
+ * button and the yellow "already in your history" banner. Category matching
+ * is case-insensitive and uses the category name (not slug) so it works
+ * regardless of how WordPress slugified the Polish / English names.
+ *
+ * Filterable via `wpcc_lesson_categories` if the list ever changes.
+ */
+function wpcc_is_lesson_post( $post_id ) {
+    $lesson_categories = apply_filters( 'wpcc_lesson_categories', array(
+        'GENERAL INTEREST',
+        'LEARNING ENGLISH',
+        'PERSONAL DEVELOPMENT',
+        'PRIVATE EYES ONLY',
+    ) );
+
+    $categories = get_the_category( $post_id );
+    if ( empty( $categories ) ) {
+        return false;
+    }
+
+    foreach ( $categories as $cat ) {
+        foreach ( $lesson_categories as $lesson_cat ) {
+            if ( strcasecmp( $cat->name, $lesson_cat ) === 0 ) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
  * Returns true when the per-post "Hide Button" toggle is set.
  *
  * thebluetree.pl already has a "Chapter Complete Button > Hide Button"
@@ -467,6 +501,9 @@ function wpcc_prepend_completed_banner( $content ) {
     if ( ! is_a( $post, 'WP_Post' ) ) {
         return $content;
     }
+    if ( ! wpcc_is_lesson_post( $post->ID ) ) {
+        return $content;
+    }
     if ( ! wpcc_user_completed_lesson( $post->ID ) ) {
         return $content;
     }
@@ -520,6 +557,9 @@ function wpcc_append_complete_button( $content ) {
         return $content;
     }
 
+    if ( ! wpcc_is_lesson_post( $post->ID ) ) {
+        return $content;
+    }
     if ( wpcc_is_button_hidden( $post->ID ) ) {
         return $content;
     }
