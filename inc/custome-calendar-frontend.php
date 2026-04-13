@@ -228,10 +228,46 @@ function wpcc_user_completed_lesson( $post_id, $user_id = 0 ) {
  */
 function wpcc_is_lesson_post( $post_id ) {
     $lesson_categories = apply_filters( 'wpcc_lesson_categories', array(
+        // Parent categories.
         'GENERAL INTEREST',
         'LEARNING ENGLISH',
         'PERSONAL DEVELOPMENT',
         'PRIVATE EYES ONLY',
+
+        // GENERAL INTEREST subcategories.
+        'Culture',
+        'Entertain Yourself',
+        'Health and fitness',
+        'Man and Society',
+        'Quote and question',
+        'Science stuff',
+        'Surprise me',
+        'The arts',
+        'Travel and nature',
+        'What do you think',
+        'Wise quotes',
+
+        // LEARNING ENGLISH subcategories.
+        'Business English',
+        'English grammar',
+        'Everyday English',
+        'Learn more words',
+        'Tests and Quizzes',
+
+        // PERSONAL DEVELOPMENT subcategories.
+        'Better communicator',
+        'Better writer',
+        'How to learn',
+        'Learn from TED',
+        'Personal productivity',
+
+        // PRIVATE EYES ONLY subcategories.
+        'Audio library',
+        'Coursebook handouts',
+        'HBR articles',
+        'PG Bonus Insights',
+        'Soundview Summaries',
+        'Video library',
     ) );
 
     $categories = get_the_category( $post_id );
