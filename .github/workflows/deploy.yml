@@ -1,0 +1,37 @@
+name: Deploy to WordPress
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the latest code
+        uses: actions/checkout@v4
+
+      - name: Upload to the server
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          # The plugin lives at the repo root here (wp-custom-calendar.php,
+          # inc/, custom/, lib/), unlike tbt_tooltip where it sits in a
+          # subdirectory — hence "./" rather than "./<plugin-name>/".
+          local-dir: ./
+          # The FTP account lands in wp-content/plugins/, so this is just the
+          # plugin's folder name on the server.
+          server-dir: /wp-custom-calendar/
+          dry-run: false
+          # Because local-dir is the repo root, these patterns are what keep
+          # .git/ and .github/ off the server.
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/*.md
