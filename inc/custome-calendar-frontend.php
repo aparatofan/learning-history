@@ -13,7 +13,9 @@
  *                                            but always returns empty. The
  *                                            button is appended via the_content.
  *   - Appends the "Dodaj lekcję do historii" button at the bottom of post
- *     content via the_content filter (wpcc_append_complete_button).
+ *     content via the_content filter (wpcc_append_complete_button), on posts
+ *     that wpcc_is_lesson_post() recognises as lessons — i.e. posts in one of
+ *     the four master categories or any of their descendants.
  *   - Adds body class wpcc-lesson-hide-section on ALL singular pages so the
  *     DonDivi / "THE END OF THE LESSON" section is always hidden.
  */
@@ -217,73 +219,138 @@ function wpcc_user_completed_lesson( $post_id, $user_id = 0 ) {
 }
 
 /**
- * Returns true when the post belongs to one of the lesson categories.
+ * The four "master" lesson categories, resolved to term IDs.
  *
- * Only posts in these categories should show the "Dodaj lekcję do historii"
- * button and the yellow "already in your history" banner. Category matching
- * is case-insensitive and uses the category name (not slug) so it works
- * regardless of how WordPress slugified the Polish / English names.
+ * These are the top-level categories on thebluetree.pl that define what a
+ * lesson is. They are looked up by name at call time (rather than hardcoded as
+ * IDs) so the plugin keeps working on a staging copy of the site where the term
+ * IDs differ. Lookups go through get_term_by(), which reads WordPress' object
+ * cache, so this is cheap even when called several times per request.
  *
- * Filterable via `wpcc_lesson_categories` if the list ever changes.
+ * Override with the `wpcc_lesson_master_categories` filter, which receives and
+ * must return an array of term IDs. That is the supported way to hardcode the
+ * production IDs (skipping the name lookups entirely) or to add / remove a
+ * master category without touching this file:
+ *
+ *     add_filter( 'wpcc_lesson_master_categories', function( $ids ) {
+ *         return array( 497, 498, 668, 999 );
+ *     } );
  */
-function wpcc_is_lesson_post( $post_id ) {
-    $lesson_categories = apply_filters( 'wpcc_lesson_categories', array(
-        // Parent categories.
+function wpcc_lesson_master_category_ids() {
+    $master_names = array(
         'GENERAL INTEREST',
         'LEARNING ENGLISH',
         'PERSONAL DEVELOPMENT',
         'PRIVATE EYES ONLY',
+    );
 
-        // GENERAL INTEREST subcategories.
-        'Culture',
-        'Entertain Yourself',
-        'Health and fitness',
-        'Man and Society',
-        'Quote and question',
-        'Science stuff',
-        'Surprise me',
-        'The arts',
-        'Travel and nature',
-        'What do you think',
-        'Wise quotes',
-
-        // LEARNING ENGLISH subcategories.
-        'Business English',
-        'English grammar',
-        'Everyday English',
-        'Learn more words',
-        'Tests and Quizzes',
-
-        // PERSONAL DEVELOPMENT subcategories.
-        'Better communicator',
-        'Better writer',
-        'How to learn',
-        'Learn from TED',
-        'Personal productivity',
-
-        // PRIVATE EYES ONLY subcategories.
-        'Audio library',
-        'Coursebook handouts',
-        'HBR articles',
-        'PG Bonus Insights',
-        'Soundview Summaries',
-        'Video library',
-    ) );
-
-    $categories = get_the_category( $post_id );
-    if ( empty( $categories ) ) {
-        return false;
+    $master_ids = array();
+    foreach ( $master_names as $name ) {
+        $term = get_term_by( 'name', $name, 'category' );
+        if ( $term && ! is_wp_error( $term ) ) {
+            $master_ids[] = (int) $term->term_id;
+        }
     }
 
-    foreach ( $categories as $cat ) {
-        foreach ( $lesson_categories as $lesson_cat ) {
-            if ( strcasecmp( $cat->name, $lesson_cat ) === 0 ) {
-                return true;
+    $master_ids = apply_filters( 'wpcc_lesson_master_categories', $master_ids );
+
+    if ( ! is_array( $master_ids ) ) {
+        return array();
+    }
+
+    return array_values( array_unique( array_map( 'intval', $master_ids ) ) );
+}
+
+/**
+ * Term IDs that must NOT count as lesson categories, even though they sit
+ * under one of the masters.
+ *
+ * Empty by default — every descendant of a master is a lesson category. An ID
+ * listed here opts out that category *and everything below it*, so a whole
+ * branch can be disabled with one entry:
+ *
+ *     add_filter( 'wpcc_lesson_excluded_categories', function( $ids ) {
+ *         return array( 1234 );  // e.g. a staging / admin-only subcategory
+ *     } );
+ */
+function wpcc_lesson_excluded_category_ids() {
+    $excluded = apply_filters( 'wpcc_lesson_excluded_categories', array() );
+
+    if ( ! is_array( $excluded ) ) {
+        return array();
+    }
+
+    return array_values( array_unique( array_map( 'intval', $excluded ) ) );
+}
+
+/**
+ * Returns true when the post is a lesson.
+ *
+ * Only lessons show the "Dodaj lekcję do historii" button and the yellow
+ * "already in your history" banner.
+ *
+ * The rule is structural, not a list of names: a post is a lesson when any of
+ * its categories *is* one of the four master categories
+ * (wpcc_lesson_master_category_ids()) or has one of them among its ancestors,
+ * at any depth. New subcategories therefore work the moment they are created —
+ * no code change, no registration step. Categories are compared by term ID, so
+ * renaming a category cannot silently disable the button on its lessons (which
+ * is exactly what the previous name-matching implementation did).
+ *
+ * The climb uses get_ancestors(), which WordPress keeps in its object cache.
+ *
+ * Behaviour at the edges:
+ *   - post with no categories                → false
+ *   - post in several categories             → true if ANY of them qualifies
+ *   - category listed in the exclusion filter → that category (and any
+ *                                               descendant of it) never
+ *                                               qualifies, but a sibling
+ *                                               category on the same post
+ *                                               still can
+ *
+ * Final escape hatch: the return value is filterable via `wpcc_is_lesson_post`.
+ */
+function wpcc_is_lesson_post( $post_id ) {
+    // Deprecated since 1.4.0: `wpcc_lesson_categories` used to supply an
+    // allowlist of category *names*. The gate is now structural (see above) and
+    // that list no longer has any meaning, so the filter is retained purely as
+    // a registered no-op — its result is intentionally discarded. It is kept
+    // rather than removed because the site's own functions.php cannot be
+    // inspected from this repo, and a stray add_filter() there must not fatal.
+    apply_filters( 'wpcc_lesson_categories', array() );
+
+    $is_lesson = false;
+
+    $master_ids = wpcc_lesson_master_category_ids();
+    $excluded   = wpcc_lesson_excluded_category_ids();
+    $categories = get_the_category( $post_id );
+
+    if ( ! empty( $master_ids ) && ! empty( $categories ) ) {
+        foreach ( $categories as $cat ) {
+            $term_id = (int) $cat->term_id;
+
+            // The category itself plus every ancestor above it, so one
+            // array_intersect() answers both "is a master" and "descends from
+            // a master".
+            $chain     = array( $term_id );
+            $ancestors = get_ancestors( $term_id, 'category' );
+            if ( is_array( $ancestors ) ) {
+                $chain = array_merge( $chain, array_map( 'intval', $ancestors ) );
+            }
+
+            // Exclusions win, and apply to the whole branch.
+            if ( ! empty( $excluded ) && array_intersect( $chain, $excluded ) ) {
+                continue;
+            }
+
+            if ( array_intersect( $chain, $master_ids ) ) {
+                $is_lesson = true;
+                break;
             }
         }
     }
 
-    return false;
+    return (bool) apply_filters( 'wpcc_is_lesson_post', $is_lesson, $post_id );
 }
 
 /**
@@ -634,6 +701,10 @@ function wpcc_debug_footer_comment() {
         $parts[] = 'has_shortcode=' . ( wpcc_post_has_plugin_shortcode( $post ) ? '1' : '0' );
         $parts[] = 'completed=' . ( wpcc_user_completed_lesson( $post->ID ) ? '1' : '0' );
         $parts[] = 'hidden=' . ( wpcc_is_button_hidden( $post->ID ) ? '1' : '0' );
+        // The category gate's verdict. When the button is missing from a lesson
+        // page, this is the first thing to check: is_lesson=0 means the post's
+        // categories don't resolve to any of the four master categories.
+        $parts[] = 'is_lesson=' . ( wpcc_is_lesson_post( $post->ID ) ? '1' : '0' );
         $parts[] = 'assets=' . ( wpcc_should_load_assets() ? '1' : '0' );
     }
     echo "\n<!-- " . esc_html( implode( ' ', $parts ) ) . " -->\n";

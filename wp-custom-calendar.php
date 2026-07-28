@@ -4,7 +4,7 @@
  * Description: Tracks learning history. Users mark a lesson as done and it appears
  *              on a calendar page; a yellow banner is shown on lessons they have
  *              already completed.
- * Version:     1.3.0
+ * Version:     1.4.0
  * Author:      ashokkuikel (patched)
  * Text Domain: wp-custom-calendar
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'WPCC_VERSION', '1.3.0' );
+define( 'WPCC_VERSION', '1.4.0' );
 define( 'WPCC_PLUGIN_FILE', __FILE__ );
 define( 'WPCC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPCC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
