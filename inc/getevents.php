@@ -13,6 +13,66 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+/**
+ * Cleans up a stored lesson title for display in the calendar tooltip.
+ *
+ * Two problems are fixed here, both at read time so existing wpcc_tracking
+ * rows benefit without rewriting the table:
+ *
+ * 1. HTML entities. The title column is populated by get_the_title(), which
+ *    runs the `the_title` filters — including wptexturize(), which replaces a
+ *    typed " - " with the *entity* " &#8211; " rather than a literal en dash.
+ *    custom/js/script.js builds the tooltip with jQuery .text(), so the entity
+ *    was rendered literally: "Talking Picture &#8211; Books and reading".
+ *    Decoding here also covers curly apostrophes (&#8217;) and quotes
+ *    (&#8220;), which had the same problem in any title containing them.
+ *    Decoding is safe because the tooltip inserts the string as text, never
+ *    as HTML.
+ *
+ * 2. A redundant category prefix. Lessons in some categories are titled
+ *    "<Category> - <Topic>" (e.g. "Talking Picture - Books and reading"), so
+ *    the tooltip repeated the category name. Only a prefix matching one of
+ *    *this post's own* category names is removed, followed by a hyphen, en
+ *    dash or em dash — so an ordinary title that merely contains a dash is
+ *    left alone.
+ *
+ * Note this affects the calendar tooltip only. The lesson's own page still
+ *    shows its real, full post title.
+ */
+function wpcc_clean_event_title( $title, $post_id = 0 ) {
+    $title = trim( html_entity_decode( (string) $title, ENT_QUOTES, 'UTF-8' ) );
+
+    if ( ! $post_id || '' === $title ) {
+        return $title;
+    }
+
+    $categories = get_the_category( $post_id );
+    if ( empty( $categories ) ) {
+        return $title;
+    }
+
+    foreach ( $categories as $cat ) {
+        $name = trim( html_entity_decode( $cat->name, ENT_QUOTES, 'UTF-8' ) );
+        if ( '' === $name ) {
+            continue;
+        }
+
+        // "<name>" + optional space + hyphen / en dash / em dash + space.
+        $pattern  = '/^' . preg_quote( $name, '/' ) . '\s*(?:-|\x{2013}|\x{2014})\s*/ui';
+        $stripped = preg_replace( $pattern, '', $title, 1 );
+
+        // preg_replace() returns null on a malformed-UTF-8 subject; and never
+        // strip a title down to nothing, which would leave a blank tooltip.
+        if ( null === $stripped || $stripped === $title || '' === trim( $stripped ) ) {
+            continue;
+        }
+
+        return trim( $stripped );
+    }
+
+    return $title;
+}
+
 function getprivate_event_callback() {
     global $wpdb;
 
@@ -64,7 +124,7 @@ function getprivate_event_callback() {
 
             $event_array[] = array(
                 'id'          => isset( $row->id ) ? (int) $row->id : 0,
-                'title'       => isset( $row->title ) ? $row->title : '',
+                'title'       => wpcc_clean_event_title( isset( $row->title ) ? $row->title : '', $post_id ),
                 'description' => isset( $row->description ) ? $row->description : '',
                 'start'       => isset( $row->start ) ? $row->start : '',
                 'imageID'     => $resolved_icon,

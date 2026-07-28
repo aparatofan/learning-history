@@ -9,7 +9,7 @@ jQuery(document).ready(function($) {
     // The number after "v=" should match WPCC_VERSION in wp-custom-calendar.php.
     // If you refresh a lesson page and don't see this log line, the browser
     // (or a caching plugin / CDN) is still serving a stale copy of script.js.
-    try { console.log('[wpcc] script.js v=1.3.0 loaded'); } catch (e) {}
+    try { console.log('[wpcc] script.js v=1.4.1 loaded'); } catch (e) {}
 
     // ---------------------------------------------------------------------
     // Auto-hide the "THE END OF THE LESSON" DIVI section on completed /
